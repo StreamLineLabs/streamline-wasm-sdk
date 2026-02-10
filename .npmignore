@@ -1,0 +1,39 @@
+# Source code (WASM is compiled to pkg/)
+src/
+tests/
+demo/
+target/
+pkg-bundler/
+
+# Rust build files
+Cargo.toml
+Cargo.lock
+rust-toolchain.toml
+
+# CI/CD and repo metadata
+.github/
+.gitignore
+Makefile
+CONTRIBUTING.md
+SECURITY.md
+
+# Scripts (only needed for development)
+scripts/
+
+# IDE and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Environment files
+.env
+.env.*
+
+# Test coverage
+coverage/
+
+# Miscellaneous
+*.log

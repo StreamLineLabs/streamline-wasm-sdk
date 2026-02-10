@@ -1,0 +1,54 @@
+{
+  "name": "@streamlinelabs/streamline-wasm",
+  "version": "0.2.0",
+  "description": "Browser-native WebAssembly SDK for Streamline — the Redis of Streaming",
+  "main": "pkg/streamline_wasm_sdk.js",
+  "module": "pkg/streamline_wasm_sdk.js",
+  "types": "pkg/streamline_wasm_sdk.d.ts",
+  "unpkg": "pkg/streamline_wasm_sdk.js",
+  "jsdelivr": "pkg/streamline_wasm_sdk.js",
+  "sideEffects": [
+    "pkg/streamline_wasm_sdk.js"
+  ],
+  "files": [
+    "pkg/",
+    "streamline-wasm.d.ts",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "bash scripts/build.sh",
+    "build:web": "wasm-pack build --target web --out-dir pkg --release",
+    "build:bundler": "wasm-pack build --target bundler --out-dir pkg-bundler --release",
+    "test": "cargo test && wasm-pack test --headless --chrome",
+    "test:unit": "cargo test",
+    "clean": "rm -rf pkg pkg-bundler",
+    "prepublishOnly": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/streamlinelabs/streamline-wasm-sdk.git"
+  },
+  "homepage": "https://github.com/streamlinelabs/streamline-wasm-sdk#readme",
+  "bugs": {
+    "url": "https://github.com/streamlinelabs/streamline-wasm-sdk/issues"
+  },
+  "keywords": [
+    "streamline",
+    "wasm",
+    "webassembly",
+    "streaming",
+    "kafka",
+    "websocket",
+    "browser",
+    "real-time",
+    "pub-sub",
+    "message-queue",
+    "event-streaming"
+  ],
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
