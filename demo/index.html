@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Streamline WASM SDK — Interactive Demo</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #181b23;
+    --surface2: #21242e;
+    --border: #2d3140;
+    --accent: #6c5ce7;
+    --accent-light: #a29bfe;
+    --green: #00cec9;
+    --red: #ff7675;
+    --yellow: #fdcb6e;
+    --text: #e4e6eb;
+    --text-muted: #8b8fa3;
+    --radius: 8px;
+    --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --mono: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+  header {
+    background: linear-gradient(135deg, var(--accent) 0%, #4834d4 100%);
+    padding: 1.5rem 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  header h1 {
+    font-size: 1.4rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  header h1 .logo { font-size: 1.6rem; }
+  header .tagline {
+    font-size: 0.85rem;
+    opacity: 0.85;
+    font-weight: 400;
+  }
+  .mode-badge {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.7rem;
+    border-radius: 999px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .mode-badge.live { background: var(--green); color: #000; }
+  .mode-badge.demo { background: var(--yellow); color: #000; }
+
+  main {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1.5rem;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.25rem;
+  }
+  @media (max-width: 800px) { main { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .card-header {
+    background: var(--surface2);
+    padding: 0.75rem 1rem;
+    font-weight: 600;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .card-body { padding: 1rem; }
+  .card.full-width { grid-column: 1 / -1; }
+
+  label {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: 0.25rem;
+    font-weight: 500;
+  }
+  input, select, textarea {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 0.85rem;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent-light); }
+  textarea { resize: vertical; min-height: 60px; font-family: var(--mono); font-size: 0.8rem; }
+
+  .row { display: flex; gap: 0.5rem; align-items: flex-end; }
+  .row > * { flex: 1; }
+  .form-group { margin-bottom: 0.75rem; }
+
+  button {
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: var(--radius);
+    font-family: var(--font);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s;
+    white-space: nowrap;
+  }
+  button:active { transform: scale(0.97); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover:not(:disabled) { background: var(--accent-light); }
+  .btn-success { background: var(--green); color: #000; }
+  .btn-success:hover:not(:disabled) { opacity: 0.85; }
+  .btn-danger { background: var(--red); color: #fff; }
+  .btn-danger:hover:not(:disabled) { opacity: 0.85; }
+  .btn-sm { padding: 0.35rem 0.7rem; font-size: 0.8rem; }
+
+  .status-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    background: var(--text-muted);
+  }
+  .status-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .status-dot.connecting { background: var(--yellow); animation: pulse 1s infinite; }
+  .status-dot.error { background: var(--red); }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  .log-area {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.75rem;
+    max-height: 300px;
+    overflow-y: auto;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    line-height: 1.5;
+  }
+  .log-entry { padding: 0.15rem 0; border-bottom: 1px solid var(--border); }
+  .log-entry:last-child { border-bottom: none; }
+  .log-time { color: var(--text-muted); margin-right: 0.5rem; }
+  .log-topic { color: var(--accent-light); margin-right: 0.5rem; }
+  .log-key { color: var(--yellow); margin-right: 0.5rem; }
+
+  .topic-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    min-height: 32px;
+    align-items: center;
+  }
+  .topic-chip {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    padding: 0.25rem 0.65rem;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+  .topic-chip .del {
+    cursor: pointer;
+    color: var(--red);
+    font-weight: 700;
+    font-size: 0.9rem;
+    line-height: 1;
+  }
+  .topic-chip .del:hover { opacity: 0.7; }
+
+  #statusBar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding: 0.4rem 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    z-index: 10;
+  }
+  #statusBar .sep { width: 1px; height: 14px; background: var(--border); }
+  .empty { color: var(--text-muted); font-style: italic; font-size: 0.82rem; }
+  footer { padding-bottom: 2.5rem; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1><span class="logo">⚡</span> Streamline WASM SDK Demo</h1>
+    <div class="tagline">The Redis of Streaming — Interactive Browser Demo</div>
+  </div>
+  <span id="modeBadge" class="mode-badge demo">Demo Mode</span>
+</header>
+
+<main>
+  <!-- Connection -->
+  <div class="card">
+    <div class="card-header">🔌 Connection</div>
+    <div class="card-body">
+      <div class="form-group">
+        <label for="serverUrl">Server WebSocket URL</label>
+        <input id="serverUrl" type="text" value="ws://localhost:9094/ws" placeholder="ws://host:port/ws">
+      </div>
+      <div class="row">
+        <button id="btnConnect" class="btn-success" onclick="doConnect()">Connect</button>
+        <button id="btnDisconnect" class="btn-danger" onclick="doDisconnect()" disabled>Disconnect</button>
+        <button class="btn-primary btn-sm" onclick="toggleDemoMode()">Toggle Demo Mode</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Topics -->
+  <div class="card">
+    <div class="card-header">📋 Topics</div>
+    <div class="card-body">
+      <div class="form-group">
+        <label>Existing Topics</label>
+        <div id="topicList" class="topic-list"><span class="empty">No topics loaded</span></div>
+      </div>
+      <div class="row" style="margin-top:0.5rem;">
+        <button class="btn-primary btn-sm" onclick="doListTopics()">Refresh Topics</button>
+      </div>
+      <hr style="border:none;border-top:1px solid var(--border);margin:0.75rem 0;">
+      <div class="row">
+        <div class="form-group" style="flex:2">
+          <label for="newTopicName">Create Topic</label>
+          <input id="newTopicName" placeholder="topic-name">
+        </div>
+        <div class="form-group" style="flex:1">
+          <label for="newTopicPartitions">Partitions</label>
+          <input id="newTopicPartitions" type="number" min="1" value="1">
+        </div>
+        <button class="btn-success btn-sm" onclick="doCreateTopic()" style="margin-bottom:0.75rem;">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Producer -->
+  <div class="card">
+    <div class="card-header">📤 Producer</div>
+    <div class="card-body">
+      <div class="row">
+        <div class="form-group" style="flex:2">
+          <label for="produceTopic">Topic</label>
+          <input id="produceTopic" placeholder="my-topic" value="demo-events">
+        </div>
+        <div class="form-group" style="flex:1">
+          <label for="produceKey">Key <span style="opacity:0.5">(optional)</span></label>
+          <input id="produceKey" placeholder="msg-key">
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="produceValue">Message Value</label>
+        <textarea id="produceValue" rows="2" placeholder='{"event":"click","ts":1234}'></textarea>
+      </div>
+      <div class="form-group">
+        <label for="produceHeaders">Headers <span style="opacity:0.5">(JSON, optional)</span></label>
+        <input id="produceHeaders" placeholder='{"content-type":"application/json"}'>
+      </div>
+      <div class="row">
+        <button class="btn-success" onclick="doProduce()">Send Message</button>
+        <button class="btn-primary btn-sm" onclick="doProduceBatch()">Send 10x Batch</button>
+      </div>
+      <div id="produceStatus" style="margin-top:0.5rem;font-size:0.8rem;color:var(--text-muted);"></div>
+    </div>
+  </div>
+
+  <!-- Consumer -->
+  <div class="card">
+    <div class="card-header">📥 Consumer</div>
+    <div class="card-body">
+      <div class="row">
+        <div class="form-group" style="flex:2">
+          <label for="consumeTopic">Topic</label>
+          <input id="consumeTopic" placeholder="my-topic" value="demo-events">
+        </div>
+        <button id="btnSubscribe" class="btn-success btn-sm" onclick="doSubscribe()" style="margin-bottom:0.75rem;">Subscribe</button>
+        <button id="btnUnsubscribe" class="btn-danger btn-sm" onclick="doUnsubscribe()" disabled style="margin-bottom:0.75rem;">Unsubscribe</button>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.35rem;">
+        <label style="margin:0;">Message Log <span id="msgCount" style="color:var(--accent-light);">(0)</span></label>
+        <button class="btn-sm" style="background:var(--surface2);color:var(--text-muted);" onclick="clearLog()">Clear</button>
+      </div>
+      <div id="messageLog" class="log-area"><span class="empty">No messages yet — subscribe to a topic to start receiving</span></div>
+    </div>
+  </div>
+
+  <!-- Error Handling Examples -->
+  <div class="card full-width">
+    <div class="card-header">🛡️ Error Handling Examples</div>
+    <div class="card-body">
+      <div class="row">
+        <button class="btn-primary btn-sm" onclick="demoProduceWithoutConnect()">Produce Without Connect</button>
+        <button class="btn-primary btn-sm" onclick="demoSubscribeWithoutConnect()">Subscribe Without Connect</button>
+        <button class="btn-primary btn-sm" onclick="demoInvalidUrl()">Connect to Invalid URL</button>
+        <button class="btn-primary btn-sm" onclick="demoProduceEmptyTopic()">Produce Empty Topic</button>
+      </div>
+      <div id="errorDemoLog" class="log-area" style="margin-top:0.75rem;max-height:150px;">
+        <span class="empty">Click a button above to see how the SDK handles errors</span>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div id="statusBar">
+  <span class="status-dot" id="statusDot"></span>
+  <span id="statusText">Disconnected</span>
+  <span class="sep"></span>
+  <span id="statusMode">Demo mode</span>
+  <span class="sep"></span>
+  <span id="statusMsgCount">Messages: 0</span>
+</div>
+
+<footer></footer>
+
+<script type="module">
+  // ── State ──────────────────────────────────────────────────────────────
+  let client = null;
+  let connected = false;
+  let demoMode = true;
+  let subscribed = false;
+  let messageCount = 0;
+  let demoInterval = null;
+  let topics = ['demo-events', 'user-clicks', 'system-logs'];
+  let wasmAvailable = false;
+
+  // Expose to onclick handlers
+  window.doConnect = doConnect;
+  window.doDisconnect = doDisconnect;
+  window.toggleDemoMode = toggleDemoMode;
+  window.doListTopics = doListTopics;
+  window.doCreateTopic = doCreateTopic;
+  window.doProduce = doProduce;
+  window.doProduceBatch = doProduceBatch;
+  window.doSubscribe = doSubscribe;
+  window.doUnsubscribe = doUnsubscribe;
+  window.clearLog = clearLog;
+  window.demoProduceWithoutConnect = demoProduceWithoutConnect;
+  window.demoSubscribeWithoutConnect = demoSubscribeWithoutConnect;
+  window.demoInvalidUrl = demoInvalidUrl;
+  window.demoProduceEmptyTopic = demoProduceEmptyTopic;
+
+  // ── Try loading WASM ──────────────────────────────────────────────────
+  let wasm = null;
+  try {
+    wasm = await import('../pkg/streamline_wasm_sdk.js');
+    await wasm.default();
+    wasmAvailable = true;
+    demoMode = false;
+    updateModeBadge();
+    setStatus('connecting', 'WASM loaded — ready to connect');
+  } catch (e) {
+    console.warn('WASM module not found, running in demo mode.', e.message);
+    setStatus('disconnected', 'Demo mode — WASM not loaded');
+  }
+
+  // ── Connection ────────────────────────────────────────────────────────
+  async function doConnect() {
+    const url = document.getElementById('serverUrl').value.trim();
+    if (!url) return showError('Please enter a server URL');
+
+    if (demoMode) {
+      connected = true;
+      updateConnectionUI();
+      setStatus('connected', `Connected (demo) to ${url}`);
+      doListTopics();
+      return;
+    }
+
+    try {
+      client = new wasm.StreamlineClient(url);
+      client.on_state_change((state) => {
+        const stateStr = state.toLowerCase();
+        if (stateStr === 'connected') {
+          connected = true;
+          updateConnectionUI();
+          setStatus('connected', `Connected to ${url}`);
+        } else if (stateStr === 'disconnected') {
+          connected = false;
+          updateConnectionUI();
+          setStatus('disconnected', 'Disconnected');
+        } else if (stateStr === 'reconnecting') {
+          setStatus('connecting', `Reconnecting to ${url}...`);
+        } else if (stateStr === 'connecting') {
+          setStatus('connecting', `Connecting to ${url}...`);
+        }
+      });
+      client.connect();
+      connected = true;
+      updateConnectionUI();
+      setStatus('connected', `Connected to ${url}`);
+    } catch (e) {
+      showError(`Connection failed: ${e.message || e}`);
+      setStatus('error', `Connection failed: ${e.message || e}`);
+    }
+  }
+
+  function doDisconnect() {
+    if (subscribed) doUnsubscribe();
+    if (!demoMode && client) {
+      try { client.disconnect(); } catch (_) {}
+      client = null;
+    }
+    connected = false;
+    updateConnectionUI();
+    setStatus('disconnected', 'Disconnected');
+  }
+
+  function toggleDemoMode() {
+    if (!demoMode && wasmAvailable) {
+      demoMode = true;
+      if (connected) doDisconnect();
+    } else if (demoMode && wasmAvailable) {
+      demoMode = false;
+    } else {
+      demoMode = true;
+    }
+    updateModeBadge();
+  }
+
+  // ── Topics ────────────────────────────────────────────────────────────
+  function doListTopics() {
+    if (demoMode) {
+      renderTopics(topics);
+      return;
+    }
+    if (!client || !connected) return showError('Not connected');
+    try {
+      client.list_topics();
+      // Response comes asynchronously via on_state_change / on_message
+      showInfo('Requested topic list...');
+    } catch (e) { showError(`List topics: ${e.message || e}`); }
+  }
+
+  function doCreateTopic() {
+    const name = document.getElementById('newTopicName').value.trim();
+    const parts = parseInt(document.getElementById('newTopicPartitions').value) || 1;
+    if (!name) return showError('Enter a topic name');
+
+    if (demoMode) {
+      if (!topics.includes(name)) topics.push(name);
+      renderTopics(topics);
+      showInfo(`Topic "${name}" created (demo)`);
+      document.getElementById('newTopicName').value = '';
+      return;
+    }
+    if (!client || !connected) return showError('Not connected');
+    try {
+      client.create_topic(name, parts);
+      showInfo(`Creating topic "${name}"...`);
+      document.getElementById('newTopicName').value = '';
+      setTimeout(doListTopics, 500);
+    } catch (e) { showError(`Create topic: ${e.message || e}`); }
+  }
+
+  function doDeleteTopic(name) {
+    if (demoMode) {
+      topics = topics.filter(t => t !== name);
+      renderTopics(topics);
+      return;
+    }
+    if (!client || !connected) return showError('Not connected');
+    try {
+      client.delete_topic(name);
+      setTimeout(doListTopics, 500);
+    } catch (e) { showError(`Delete topic: ${e.message || e}`); }
+  }
+  window.doDeleteTopic = doDeleteTopic;
+
+  function renderTopics(list) {
+    const el = document.getElementById('topicList');
+    if (!list.length) { el.innerHTML = '<span class="empty">No topics</span>'; return; }
+    el.innerHTML = list.map(t =>
+      `<span class="topic-chip">${esc(t)}<span class="del" onclick="doDeleteTopic('${esc(t)}')">&times;</span></span>`
+    ).join('');
+  }
+
+  // ── Producer ──────────────────────────────────────────────────────────
+  function doProduce() {
+    const topic = document.getElementById('produceTopic').value.trim();
+    const key = document.getElementById('produceKey').value.trim() || null;
+    const value = document.getElementById('produceValue').value.trim();
+    if (!topic || !value) return showError('Topic and value are required');
+
+    if (demoMode) {
+      // In demo mode, echo to consumer log if subscribed to same topic
+      const consumerTopic = document.getElementById('consumeTopic').value.trim();
+      if (subscribed && topic === consumerTopic) {
+        appendMessage(topic, key, value);
+      }
+      showProduceStatus(`✓ Sent to "${topic}"`);
+      return;
+    }
+    if (!client || !connected) return showError('Not connected');
+    try {
+      if (key) {
+        client.produce_with_key(topic, key, value);
+      } else {
+        client.produce(topic, value);
+      }
+      showProduceStatus(`✓ Sent to "${topic}"`);
+    } catch (e) { showError(`Produce: ${e.message || e}`); }
+  }
+
+  function doProduceBatch() {
+    for (let i = 0; i < 10; i++) {
+      const orig = document.getElementById('produceValue').value.trim();
+      const val = orig || JSON.stringify({ event: 'batch', index: i, ts: Date.now() });
+      document.getElementById('produceValue').value = val;
+      setTimeout(() => doProduce(), i * 100);
+    }
+  }
+
+  // ── Consumer ──────────────────────────────────────────────────────────
+  function doSubscribe() {
+    const topic = document.getElementById('consumeTopic').value.trim();
+    if (!topic) return showError('Enter a topic to subscribe');
+
+    if (demoMode) {
+      subscribed = true;
+      updateSubscribeUI();
+      showInfo(`Subscribed to "${topic}" (demo) — produce messages or wait for simulated data`);
+      startDemoMessages(topic);
+      return;
+    }
+    if (!client || !connected) return showError('Not connected');
+    try {
+      client.subscribe(topic, (msg) => {
+        try {
+          const data = JSON.parse(msg);
+          appendMessage(data.topic || topic, data.key || null, data.value || msg);
+        } catch (_) {
+          appendMessage(topic, null, msg);
+        }
+      });
+      subscribed = true;
+      updateSubscribeUI();
+      showInfo(`Subscribed to "${topic}"`);
+    } catch (e) { showError(`Subscribe: ${e.message || e}`); }
+  }
+
+  function doUnsubscribe() {
+    const topic = document.getElementById('consumeTopic').value.trim();
+    if (demoMode) {
+      stopDemoMessages();
+      subscribed = false;
+      updateSubscribeUI();
+      return;
+    }
+    if (client && connected && topic) {
+      try { client.unsubscribe(topic); } catch (_) {}
+    }
+    subscribed = false;
+    updateSubscribeUI();
+  }
+
+  // ── Demo message simulator ────────────────────────────────────────────
+  const demoEvents = [
+    { key: 'user-42', value: '{"event":"page_view","path":"/home"}' },
+    { key: 'user-17', value: '{"event":"click","target":"signup-btn"}' },
+    { key: 'sensor-3', value: '{"temp":22.5,"humidity":61}' },
+    { key: null, value: '{"event":"heartbeat","ts":0}' },
+    { key: 'order-99', value: '{"event":"order_placed","total":49.99}' },
+    { key: 'user-42', value: '{"event":"search","query":"streaming platform"}' },
+    { key: 'device-8', value: '{"metric":"cpu","value":73.2}' },
+    { key: null, value: '{"event":"deploy","version":"v1.4.2"}' },
+  ];
+
+  function startDemoMessages(topic) {
+    stopDemoMessages();
+    demoInterval = setInterval(() => {
+      const evt = demoEvents[Math.floor(Math.random() * demoEvents.length)];
+      let val = evt.value;
+      // Inject live timestamp
+      val = val.replace('"ts":0', `"ts":${Date.now()}`);
+      appendMessage(topic, evt.key, val);
+    }, 2000 + Math.random() * 1500);
+  }
+
+  function stopDemoMessages() {
+    if (demoInterval) { clearInterval(demoInterval); demoInterval = null; }
+  }
+
+  // ── UI helpers ────────────────────────────────────────────────────────
+  function appendMessage(topic, key, value) {
+    const log = document.getElementById('messageLog');
+    if (messageCount === 0) log.innerHTML = '';
+    messageCount++;
+    const time = new Date().toLocaleTimeString();
+    const entry = document.createElement('div');
+    entry.className = 'log-entry';
+    entry.innerHTML =
+      `<span class="log-time">${time}</span>` +
+      `<span class="log-topic">[${esc(topic)}]</span>` +
+      (key ? `<span class="log-key">${esc(key)}</span>` : '') +
+      `${esc(value)}`;
+    log.appendChild(entry);
+    log.scrollTop = log.scrollHeight;
+    document.getElementById('msgCount').textContent = `(${messageCount})`;
+    document.getElementById('statusMsgCount').textContent = `Messages: ${messageCount}`;
+  }
+
+  function clearLog() {
+    document.getElementById('messageLog').innerHTML = '<span class="empty">Log cleared</span>';
+    messageCount = 0;
+    document.getElementById('msgCount').textContent = '(0)';
+    document.getElementById('statusMsgCount').textContent = 'Messages: 0';
+  }
+
+  function setStatus(state, text) {
+    const dot = document.getElementById('statusDot');
+    dot.className = 'status-dot ' + (state === 'connected' ? 'connected' : state === 'connecting' ? 'connecting' : state === 'error' ? 'error' : '');
+    document.getElementById('statusText').textContent = text;
+  }
+
+  function updateConnectionUI() {
+    document.getElementById('btnConnect').disabled = connected;
+    document.getElementById('btnDisconnect').disabled = !connected;
+  }
+
+  function updateSubscribeUI() {
+    document.getElementById('btnSubscribe').disabled = subscribed;
+    document.getElementById('btnUnsubscribe').disabled = !subscribed;
+  }
+
+  function updateModeBadge() {
+    const badge = document.getElementById('modeBadge');
+    badge.textContent = demoMode ? 'Demo Mode' : 'Live Mode';
+    badge.className = 'mode-badge ' + (demoMode ? 'demo' : 'live');
+    document.getElementById('statusMode').textContent = demoMode ? 'Demo mode' : 'Live mode';
+  }
+
+  function showError(msg) {
+    const el = document.getElementById('produceStatus');
+    el.style.color = 'var(--red)';
+    el.textContent = '✗ ' + msg;
+    setTimeout(() => { el.textContent = ''; }, 4000);
+  }
+
+  function showInfo(msg) {
+    const el = document.getElementById('produceStatus');
+    el.style.color = 'var(--text-muted)';
+    el.textContent = msg;
+    setTimeout(() => { el.textContent = ''; }, 3000);
+  }
+
+  function showProduceStatus(msg) {
+    const el = document.getElementById('produceStatus');
+    el.style.color = 'var(--green)';
+    el.textContent = msg;
+    setTimeout(() => { el.textContent = ''; }, 2000);
+  }
+
+  function esc(s) {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  // ── Error Handling Demos ─────────────────────────────────────────────
+  function appendErrorLog(type, msg) {
+    const log = document.getElementById('errorDemoLog');
+    if (log.querySelector('.empty')) log.innerHTML = '';
+    const time = new Date().toLocaleTimeString();
+    const color = type === 'error' ? 'var(--red)' : type === 'success' ? 'var(--green)' : 'var(--yellow)';
+    const icon = type === 'error' ? '✗' : type === 'success' ? '✓' : 'ℹ';
+    const entry = document.createElement('div');
+    entry.className = 'log-entry';
+    entry.innerHTML = `<span class="log-time">${time}</span><span style="color:${color};font-weight:600;">${icon}</span> ${esc(msg)}`;
+    log.appendChild(entry);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function demoProduceWithoutConnect() {
+    appendErrorLog('info', 'Attempting to produce without connecting...');
+    if (demoMode) {
+      appendErrorLog('error', 'Caught: WebSocket is not connected — call connect() first');
+      return;
+    }
+    try {
+      const tempClient = new wasm.StreamlineClient('ws://localhost:9094/ws');
+      tempClient.produce('test-topic', 'hello');
+      appendErrorLog('success', 'Message sent (unexpected)');
+    } catch (e) {
+      appendErrorLog('error', `Caught: ${e.message || e}`);
+    }
+  }
+
+  function demoSubscribeWithoutConnect() {
+    appendErrorLog('info', 'Attempting to subscribe without connecting...');
+    if (demoMode) {
+      appendErrorLog('error', 'Caught: WebSocket is not connected — call connect() first');
+      return;
+    }
+    try {
+      const tempClient = new wasm.StreamlineClient('ws://localhost:9094/ws');
+      tempClient.subscribe('test-topic', () => {});
+      appendErrorLog('success', 'Subscribed (unexpected)');
+    } catch (e) {
+      appendErrorLog('error', `Caught: ${e.message || e}`);
+    }
+  }
+
+  function demoInvalidUrl() {
+    appendErrorLog('info', 'Attempting to connect to invalid URL...');
+    if (demoMode) {
+      appendErrorLog('error', 'Caught: Connection failed — invalid WebSocket URL');
+      return;
+    }
+    try {
+      const tempClient = new wasm.StreamlineClient('ws://invalid-host:99999/ws');
+      tempClient.on_state_change((state) => {
+        appendErrorLog('info', `State changed: ${state}`);
+      });
+      tempClient.connect();
+      appendErrorLog('info', 'Connect initiated — waiting for error callback...');
+      setTimeout(() => {
+        try { tempClient.disconnect(); } catch (_) {}
+      }, 5000);
+    } catch (e) {
+      appendErrorLog('error', `Caught: ${e.message || e}`);
+    }
+  }
+
+  function demoProduceEmptyTopic() {
+    appendErrorLog('info', 'Attempting to produce with empty topic...');
+    if (demoMode) {
+      appendErrorLog('error', 'Caught: Topic name cannot be empty');
+      return;
+    }
+    try {
+      if (!client || !connected) {
+        appendErrorLog('error', 'Caught: Not connected — connect first to test this');
+        return;
+      }
+      client.produce('', 'test-value');
+      appendErrorLog('success', 'Message sent (server may reject)');
+    } catch (e) {
+      appendErrorLog('error', `Caught: ${e.message || e}`);
+    }
+  }
+</script>
+</body>
+</html>
