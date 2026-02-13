@@ -273,7 +273,7 @@ See [`demo/README.md`](demo/README.md) for details.
 
 ### Prerequisites
 
-- [Rust](https://rustup.rs/) 1.75+
+- [Rust](https://rustup.rs/) 1.80+
 - [wasm-pack](https://rustwasm.github.io/wasm-pack/installer/)
 
 ```bash
