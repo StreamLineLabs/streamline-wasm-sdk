@@ -1,6 +1,7 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+- style: normalize import paths across modules (2026-02-18)
 - feat: add streaming message iterator for JS (2026-02-15)
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
