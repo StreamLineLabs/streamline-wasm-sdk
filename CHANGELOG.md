@@ -1,6 +1,7 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+- perf: reduce WASM binary size with lto (2026-02-20)
 - feat: add browser-compatible WebSocket transport (2026-02-18)
 - style: normalize import paths across modules (2026-02-18)
 - feat: add streaming message iterator for JS (2026-02-15)
