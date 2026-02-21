@@ -1,6 +1,7 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+- test: add wasm-bindgen-test suite for core API (2026-02-21)
 - perf: reduce WASM binary size with lto (2026-02-20)
 - feat: add browser-compatible WebSocket transport (2026-02-18)
 - style: normalize import paths across modules (2026-02-18)
