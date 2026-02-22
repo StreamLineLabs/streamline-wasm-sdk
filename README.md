@@ -1,6 +1,7 @@
 # Streamline WASM SDK
 
 [![CI](https://github.com/streamlinelabs/streamline-wasm-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/streamlinelabs/streamline-wasm-sdk/actions/workflows/ci.yml)
+[![codecov](https://img.shields.io/codecov/c/github/streamlinelabs/streamline-wasm-sdk?style=flat-square)](https://codecov.io/gh/streamlinelabs/streamline-wasm-sdk)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![WASM](https://img.shields.io/badge/WASM-purple.svg)](https://webassembly.org/)
 [![npm](https://img.shields.io/npm/v/@streamlinelabs/streamline-wasm)](https://www.npmjs.com/package/@streamlinelabs/streamline-wasm)
