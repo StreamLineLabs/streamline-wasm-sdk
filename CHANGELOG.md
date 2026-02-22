@@ -1,6 +1,7 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+- test: add browser compatibility tests (2026-02-22)
 - refactor: simplify WASM binding initialization (2026-02-22)
 - test: add wasm-bindgen-test suite for core API (2026-02-21)
 - perf: reduce WASM binary size with lto (2026-02-20)
