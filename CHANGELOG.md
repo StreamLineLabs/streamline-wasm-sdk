@@ -1,16 +1,21 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
-- test: add browser compatibility tests (2026-02-22)
-- refactor: simplify WASM binding initialization (2026-02-22)
-- test: add wasm-bindgen-test suite for core API (2026-02-21)
-- perf: reduce WASM binary size with lto (2026-02-20)
-- feat: add browser-compatible WebSocket transport (2026-02-18)
-- style: normalize import paths across modules (2026-02-18)
-- feat: add streaming message iterator for JS (2026-02-15)
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Added
+- Browser-compatible WebSocket transport
+- Streaming message iterator for JS
+
+### Changed
+- Simplify WASM binding initialization
+
+### Performance
+- Reduce WASM binary size with LTO
 
 ## [0.2.0] - 2024-01-01
 
