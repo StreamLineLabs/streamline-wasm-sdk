@@ -324,3 +324,10 @@ Licensed under the [Apache License, Version 2.0](LICENSE).
 <!-- refactor: 9e81ef48 -->
 <!-- feat: c4d17430 -->
 <!-- style: 2455e340 -->
+
+## Security
+
+To report a security vulnerability, please email **security@streamline.dev**.
+Do **not** open a public issue.
+
+See the [Security Policy](https://github.com/streamlinelabs/streamline/blob/main/SECURITY.md) for details.

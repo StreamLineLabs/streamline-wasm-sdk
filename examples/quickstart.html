@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Streamline WASM SDK — Quick Start</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; }
+    h1 { color: #6366f1; }
+    pre { background: #1e1b2e; color: #e2e8f0; padding: 1rem; border-radius: 8px; overflow-x: auto; }
+    .log { background: #f1f5f9; padding: 1rem; border-radius: 8px; font-family: monospace; min-height: 200px; max-height: 400px; overflow-y: auto; }
+    button { padding: 0.5rem 1rem; border: none; border-radius: 6px; background: #6366f1; color: white; cursor: pointer; margin: 0.25rem; }
+    button:hover { background: #4f46e5; }
+    .status { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 0.5rem; }
+    .status.connected { background: #22c55e; }
+    .status.disconnected { background: #ef4444; }
+  </style>
+</head>
+<body>
+  <h1>🌐 Streamline WASM SDK — Quick Start</h1>
+  <p>This example demonstrates the Streamline WASM SDK running directly in the browser.</p>
+
+  <h2>Connection</h2>
+  <p>
+    <span class="status disconnected" id="status-dot"></span>
+    <span id="status-text">Disconnected</span>
+  </p>
+  <input type="text" id="url" value="ws://localhost:9094/ws" size="40" />
+  <button onclick="connect()">Connect</button>
+  <button onclick="disconnect()">Disconnect</button>
+
+  <h2>Produce</h2>
+  <input type="text" id="topic" value="demo-events" placeholder="Topic" />
+  <input type="text" id="message" value='{"event":"click","user":"alice"}' size="40" placeholder="Message (JSON)" />
+  <button onclick="produce()">Send Message</button>
+
+  <h2>Subscribe</h2>
+  <button onclick="subscribe()">Subscribe to Topic</button>
+  <button onclick="unsubscribe()">Unsubscribe</button>
+
+  <h2>Admin</h2>
+  <button onclick="listTopics()">List Topics</button>
+  <button onclick="createTopic()">Create Topic</button>
+
+  <h2>Log</h2>
+  <div class="log" id="log"></div>
+
+  <h2>Source Code</h2>
+  <pre>
+import init, { StreamlineClient } from '@streamlinelabs/streamline-wasm';
+
+await init();
+const client = new StreamlineClient('ws://localhost:9094/ws');
+client.connect();
+
+// Produce
+client.produce('demo-events', JSON.stringify({ event: 'click' }));
+
+// Subscribe
+client.subscribe('demo-events', (msg) => {
+  console.log('Received:', msg);
+});
+
+// Admin
+client.create_topic('my-topic', 3);
+client.list_topics();
+  </pre>
+
+  <script type="module">
+    import init, { StreamlineClient } from 'https://unpkg.com/@streamlinelabs/streamline-wasm/pkg/streamline_wasm_sdk.js';
+
+    let client = null;
+    const log = document.getElementById('log');
+
+    function addLog(msg) {
+      const line = document.createElement('div');
+      line.textContent = `[${new Date().toISOString().slice(11, 23)}] ${msg}`;
+      log.appendChild(line);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    // Initialize the WASM module on page load
+    await init();
+    addLog('WASM module loaded. Click "Connect" to start.');
+
+    window.connect = () => {
+      const url = document.getElementById('url').value;
+      try {
+        client = new StreamlineClient(url);
+        client.connect();
+        document.getElementById('status-dot').className = 'status connected';
+        document.getElementById('status-text').textContent = `Connected to ${url}`;
+        addLog(`Connected to ${url}`);
+      } catch (e) {
+        addLog(`❌ Connection failed: ${e}`);
+      }
+    };
+
+    window.disconnect = () => {
+      if (client) {
+        client.disconnect();
+        client = null;
+      }
+      document.getElementById('status-dot').className = 'status disconnected';
+      document.getElementById('status-text').textContent = 'Disconnected';
+      addLog('Disconnected');
+    };
+
+    window.produce = () => {
+      if (!client) { addLog('❌ Not connected'); return; }
+      const topic = document.getElementById('topic').value;
+      const msg = document.getElementById('message').value;
+      try {
+        client.produce(topic, msg);
+        addLog(`📤 Produced to ${topic}: ${msg}`);
+      } catch (e) {
+        addLog(`❌ Produce failed: ${e}`);
+      }
+    };
+
+    window.subscribe = () => {
+      if (!client) { addLog('❌ Not connected'); return; }
+      const topic = document.getElementById('topic').value;
+      try {
+        client.subscribe(topic, (msg) => {
+          addLog(`📨 ${topic}: ${msg}`);
+        });
+        addLog(`📥 Subscribed to ${topic}`);
+      } catch (e) {
+        addLog(`❌ Subscribe failed: ${e}`);
+      }
+    };
+
+    window.unsubscribe = () => {
+      if (!client) { addLog('❌ Not connected'); return; }
+      const topic = document.getElementById('topic').value;
+      try {
+        client.unsubscribe(topic);
+        addLog(`🔕 Unsubscribed from ${topic}`);
+      } catch (e) {
+        addLog(`❌ Unsubscribe failed: ${e}`);
+      }
+    };
+
+    window.listTopics = () => {
+      if (!client) { addLog('❌ Not connected'); return; }
+      try {
+        client.list_topics();
+        addLog('📋 Requested topic list (check console for results)');
+      } catch (e) {
+        addLog(`❌ List topics failed: ${e}`);
+      }
+    };
+
+    window.createTopic = () => {
+      if (!client) { addLog('❌ Not connected'); return; }
+      const topic = document.getElementById('topic').value;
+      try {
+        client.create_topic(topic, 3);
+        addLog(`✅ Created topic "${topic}" (3 partitions)`);
+      } catch (e) {
+        addLog(`❌ Create topic failed: ${e}`);
+      }
+    };
+  </script>
+</body>
+</html>
