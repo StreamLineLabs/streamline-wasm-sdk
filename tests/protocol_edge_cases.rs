@@ -171,3 +171,4 @@ fn topic_info_with_unicode_name() {
     let deser: TopicInfo = serde_json::from_str(&json).unwrap();
     assert_eq!(deser.name, "topic-日本語");
 }
+// consolidate wasm export macros
