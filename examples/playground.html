@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Streamline Interactive Playground</title>
+    <style>
+        :root {
+            --bg: #1a1b26; --fg: #a9b1d6; --accent: #7aa2f7;
+            --success: #9ece6a; --error: #f7768e; --surface: #24283b;
+            --border: #3b4261;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: var(--bg); color: var(--fg); font-family: 'SF Mono', 'Fira Code', monospace; font-size: 14px; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        h1 { color: var(--accent); margin-bottom: 8px; }
+        .subtitle { color: var(--fg); opacity: 0.7; margin-bottom: 24px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+        .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+        .panel h2 { color: var(--accent); font-size: 14px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 1px; }
+        label { display: block; font-size: 12px; color: var(--fg); opacity: 0.8; margin-bottom: 4px; }
+        input, select, textarea { width: 100%; background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 4px; padding: 8px; font-family: inherit; font-size: 13px; margin-bottom: 8px; }
+        textarea { min-height: 80px; resize: vertical; }
+        button { background: var(--accent); color: var(--bg); border: none; border-radius: 4px; padding: 8px 16px; cursor: pointer; font-family: inherit; font-weight: bold; font-size: 13px; margin-right: 8px; margin-bottom: 8px; }
+        button:hover { opacity: 0.9; }
+        button.secondary { background: var(--surface); color: var(--fg); border: 1px solid var(--border); }
+        button.danger { background: var(--error); }
+        .status { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+        .status.connected { background: var(--success); }
+        .status.disconnected { background: var(--error); }
+        .log { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px; max-height: 300px; overflow-y: auto; font-size: 12px; line-height: 1.6; }
+        .log-entry { padding: 2px 0; border-bottom: 1px solid rgba(59, 66, 97, 0.3); }
+        .log-entry.info { color: var(--accent); }
+        .log-entry.success { color: var(--success); }
+        .log-entry.error { color: var(--error); }
+        .log-entry .ts { opacity: 0.5; margin-right: 8px; }
+        .tutorials { margin-top: 16px; }
+        .tutorial-step { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+        .tutorial-step h3 { color: var(--success); font-size: 14px; margin-bottom: 8px; }
+        .tutorial-step code { background: var(--bg); padding: 2px 6px; border-radius: 3px; font-size: 12px; }
+        .step-num { display: inline-block; background: var(--accent); color: var(--bg); width: 24px; height: 24px; text-align: center; line-height: 24px; border-radius: 50%; margin-right: 8px; font-weight: bold; font-size: 12px; }
+        .metrics { display: flex; gap: 16px; margin: 12px 0; }
+        .metric { text-align: center; }
+        .metric .value { font-size: 24px; font-weight: bold; color: var(--accent); }
+        .metric .label { font-size: 11px; opacity: 0.6; }
+        @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>⚡ Streamline Playground</h1>
+        <p class="subtitle">Interactive streaming platform — try it in your browser</p>
+
+        <!-- Connection -->
+        <div class="panel" style="margin-bottom: 16px;">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+                <div>
+                    <span class="status disconnected" id="statusDot"></span>
+                    <span id="statusText">Disconnected</span>
+                </div>
+                <div>
+                    <input id="serverUrl" value="ws://localhost:9094/ws" style="width: 300px; display: inline-block; margin: 0;">
+                    <button onclick="connect()" id="connectBtn">Connect</button>
+                    <button onclick="disconnect()" class="secondary">Disconnect</button>
+                </div>
+            </div>
+            <div class="metrics">
+                <div class="metric"><div class="value" id="metricProduced">0</div><div class="label">Produced</div></div>
+                <div class="metric"><div class="value" id="metricConsumed">0</div><div class="label">Consumed</div></div>
+                <div class="metric"><div class="value" id="metricTopics">0</div><div class="label">Topics</div></div>
+                <div class="metric"><div class="value" id="metricLatency">—</div><div class="label">Latency</div></div>
+            </div>
+        </div>
+
+        <div class="grid">
+            <!-- Produce -->
+            <div class="panel">
+                <h2>📤 Produce</h2>
+                <label>Topic</label>
+                <input id="produceTopic" value="playground-events" placeholder="topic name">
+                <label>Key (optional)</label>
+                <input id="produceKey" placeholder="message key">
+                <label>Message</label>
+                <textarea id="produceMessage" placeholder='{"user": "alice", "action": "click"}'></textarea>
+                <button onclick="produce()">Send Message</button>
+                <button onclick="produceRandom()" class="secondary">Send Random</button>
+                <button onclick="produceBatch()" class="secondary">Send 100</button>
+            </div>
+
+            <!-- Subscribe -->
+            <div class="panel">
+                <h2>📥 Subscribe</h2>
+                <label>Topic</label>
+                <input id="subscribeTopic" value="playground-events" placeholder="topic name">
+                <button onclick="subscribe()">Subscribe</button>
+                <button onclick="unsubscribe()" class="secondary">Unsubscribe</button>
+                <div class="log" id="messageLog" style="margin-top: 12px;">
+                    <div class="log-entry info">Waiting for messages...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Activity Log -->
+        <div class="panel">
+            <h2>📋 Activity Log</h2>
+            <div class="log" id="activityLog"></div>
+        </div>
+
+        <!-- Tutorial Steps -->
+        <div class="tutorials">
+            <h2 style="color: var(--accent); margin-bottom: 12px;">🎓 Getting Started Tutorial</h2>
+            <div class="tutorial-step">
+                <h3><span class="step-num">1</span> Connect to Streamline</h3>
+                <p>Click <strong>Connect</strong> above to establish a WebSocket connection to your Streamline server.</p>
+            </div>
+            <div class="tutorial-step">
+                <h3><span class="step-num">2</span> Send Your First Message</h3>
+                <p>Enter a JSON message in the Produce panel and click <strong>Send Message</strong>. Try: <code>{"user":"alice","action":"click"}</code></p>
+            </div>
+            <div class="tutorial-step">
+                <h3><span class="step-num">3</span> Subscribe to Messages</h3>
+                <p>Click <strong>Subscribe</strong> in the Subscribe panel to see messages in real-time. Then send more messages!</p>
+            </div>
+            <div class="tutorial-step">
+                <h3><span class="step-num">4</span> Try Batch Production</h3>
+                <p>Click <strong>Send 100</strong> to produce 100 random messages and watch them stream in the subscriber.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let produced = 0, consumed = 0, topics = new Set();
+
+        function log(msg, type = 'info') {
+            const el = document.getElementById('activityLog');
+            const ts = new Date().toLocaleTimeString();
+            el.innerHTML = `<div class="log-entry ${type}"><span class="ts">${ts}</span>${msg}</div>` + el.innerHTML;
+        }
+
+        function msgLog(msg) {
+            const el = document.getElementById('messageLog');
+            const ts = new Date().toLocaleTimeString();
+            el.innerHTML = `<div class="log-entry success"><span class="ts">${ts}</span>${msg}</div>` + el.innerHTML;
+            consumed++;
+            document.getElementById('metricConsumed').textContent = consumed;
+        }
+
+        function connect() {
+            const url = document.getElementById('serverUrl').value;
+            try {
+                ws = new WebSocket(url);
+                ws.onopen = () => {
+                    document.getElementById('statusDot').className = 'status connected';
+                    document.getElementById('statusText').textContent = 'Connected';
+                    log('Connected to ' + url, 'success');
+                };
+                ws.onmessage = (e) => {
+                    try {
+                        const data = JSON.parse(e.data);
+                        if (data.type === 'message') {
+                            msgLog(`[${data.topic}] ${JSON.stringify(data.value).substring(0, 100)}`);
+                        } else if (data.type === 'ack') {
+                            log(`Ack: offset ${data.offset || '—'}`, 'success');
+                        }
+                    } catch { msgLog(e.data.substring(0, 200)); }
+                };
+                ws.onclose = () => {
+                    document.getElementById('statusDot').className = 'status disconnected';
+                    document.getElementById('statusText').textContent = 'Disconnected';
+                    log('Connection closed', 'error');
+                };
+                ws.onerror = () => log('Connection error', 'error');
+            } catch (e) { log('Failed: ' + e.message, 'error'); }
+        }
+
+        function disconnect() {
+            if (ws) { ws.close(); ws = null; }
+        }
+
+        function produce() {
+            if (!ws || ws.readyState !== 1) { log('Not connected', 'error'); return; }
+            const topic = document.getElementById('produceTopic').value;
+            const key = document.getElementById('produceKey').value;
+            let value = document.getElementById('produceMessage').value;
+            try { value = JSON.parse(value); } catch {}
+            ws.send(JSON.stringify({ type: 'produce', topic, key: key || undefined, value }));
+            produced++;
+            topics.add(topic);
+            document.getElementById('metricProduced').textContent = produced;
+            document.getElementById('metricTopics').textContent = topics.size;
+            log(`Produced to ${topic}`, 'success');
+        }
+
+        function produceRandom() {
+            const actions = ['click', 'view', 'purchase', 'signup', 'logout'];
+            const users = ['alice', 'bob', 'charlie', 'diana', 'eve'];
+            document.getElementById('produceMessage').value = JSON.stringify({
+                user: users[Math.floor(Math.random() * users.length)],
+                action: actions[Math.floor(Math.random() * actions.length)],
+                timestamp: Date.now(),
+                value: Math.floor(Math.random() * 1000)
+            }, null, 2);
+            produce();
+        }
+
+        function produceBatch() {
+            for (let i = 0; i < 100; i++) setTimeout(() => produceRandom(), i * 10);
+        }
+
+        function subscribe() {
+            if (!ws || ws.readyState !== 1) { log('Not connected', 'error'); return; }
+            const topic = document.getElementById('subscribeTopic').value;
+            ws.send(JSON.stringify({ type: 'subscribe', topic }));
+            topics.add(topic);
+            document.getElementById('metricTopics').textContent = topics.size;
+            log(`Subscribed to ${topic}`, 'success');
+        }
+
+        function unsubscribe() {
+            if (!ws || ws.readyState !== 1) return;
+            const topic = document.getElementById('subscribeTopic').value;
+            ws.send(JSON.stringify({ type: 'unsubscribe', topic }));
+            log(`Unsubscribed from ${topic}`, 'info');
+        }
+    </script>
+</body>
+</html>
