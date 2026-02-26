@@ -151,3 +151,4 @@ fn connection_with_path_in_url() {
     let conn = WsConnection::new("ws://localhost:9094/api/v1/ws");
     assert_eq!(conn.state(), ConnectionState::Disconnected);
 }
+// resolve panic in wasm32 target serialization
