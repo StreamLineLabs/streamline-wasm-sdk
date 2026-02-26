@@ -331,3 +331,4 @@ To report a security vulnerability, please email **security@streamline.dev**.
 Do **not** open a public issue.
 
 See the [Security Policy](https://github.com/streamlinelabs/streamline/blob/main/SECURITY.md) for details.
+
