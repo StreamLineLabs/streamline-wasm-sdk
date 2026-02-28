@@ -14,7 +14,7 @@ jobs:
     name: Check & Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -50,7 +50,7 @@ jobs:
       - name: Generate coverage
         run: cargo tarpaulin --out xml --skip-clean
       - name: Upload coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           files: cobertura.xml
           fail_ci_if_error: false
@@ -61,7 +61,7 @@ jobs:
     name: Security Audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo install cargo-audit --locked
       - run: cargo audit
@@ -70,7 +70,7 @@ jobs:
     name: Dependency Check (cargo-deny)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check
