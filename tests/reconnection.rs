@@ -152,3 +152,4 @@ fn connection_with_path_in_url() {
     assert_eq!(conn.state(), ConnectionState::Disconnected);
 }
 // resolve panic in wasm32 target serialization
+
