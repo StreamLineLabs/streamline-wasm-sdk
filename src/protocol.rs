@@ -471,3 +471,4 @@ mod tests {
         assert!(BrowserResponse::from_json(json).is_err());
     }
 }
+
