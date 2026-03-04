@@ -172,3 +172,4 @@ fn topic_info_with_unicode_name() {
     assert_eq!(deser.name, "topic-日本語");
 }
 // consolidate wasm export macros
+
