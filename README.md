@@ -316,6 +316,26 @@ Browser  ──WebSocket──▶  Streamline Server (port 9094/ws)
 
 The SDK communicates over a JSON-based protocol on top of WebSocket. Messages are framed as `BrowserMessage` (client → server) and `BrowserResponse` (server → client).
 
+## Requirements
+
+- Rust 1.80 or later (for building)
+- wasm-pack 0.12 or later
+- Streamline server 0.2.0 or later (with WebSocket gateway enabled)
+
+## Configuration
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `url` | `string` | — | WebSocket URL (e.g., `ws://localhost:9094/ws`) |
+| `reconnect` | `boolean` | `true` | Auto-reconnect on disconnect |
+| `reconnectInterval` | `number` | `1000` | Reconnect delay in milliseconds |
+| `maxReconnectAttempts` | `number` | `10` | Maximum reconnection attempts |
+| `compression` | `string` | `none` | Compression codec (`none`, `lz4`, `snappy`) |
+
+## Contributing
+
+Contributions are welcome! Please see the [organization contributing guide](https://github.com/streamlinelabs/.github/blob/main/CONTRIBUTING.md) for guidelines.
+
 ## License
 
 Licensed under the [Apache License, Version 2.0](LICENSE).
