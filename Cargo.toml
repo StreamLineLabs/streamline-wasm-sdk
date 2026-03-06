@@ -5,6 +5,10 @@ edition = "2021"
 description = "Browser-native WebAssembly SDK for Streamline streaming platform"
 license = "Apache-2.0"
 repository = "https://github.com/streamlinelabs/streamline-wasm-sdk"
+homepage = "https://github.com/streamlinelabs/streamline-wasm-sdk"
+readme = "README.md"
+keywords = ["wasm", "webassembly", "streaming", "kafka"]
+categories = ["wasm", "web-programming", "asynchronous"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -12,7 +16,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 wasm-bindgen = "0.2"
 js-sys = "0.3"
-web-sys = { version = "0.3", features = ["BinaryType", "WebSocket", "MessageEvent", "console", "ErrorEvent", "CloseEvent", "Performance", "Window"] }
+web-sys = { version = "0.3", features = ["BinaryType", "WebSocket", "MessageEvent", "console", "ErrorEvent", "CloseEvent", "Performance", "Window", "Headers", "Request", "RequestInit", "RequestMode", "Response"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde-wasm-bindgen = "0.6"
