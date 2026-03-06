@@ -15,8 +15,27 @@ Browser-native WebAssembly SDK for the [Streamline](https://github.com/streamlin
 - **WebSocket transport** — connects to Streamline's HTTP API WebSocket endpoint
 - **Auto-reconnection** — exponential backoff with configurable retry limits
 - **Full streaming API** — produce, consume, subscribe, and manage topics
+- **Admin client** — HTTP-based topic CRUD, consumer groups, and server health
+- **Query client** — execute SQL queries against stream data from the browser
+- **Schema Registry** — register, retrieve, and validate schemas (Avro, Protobuf, JSON)
 - **TypeScript definitions** — generated `.d.ts` files for full IDE support
 - **Tiny footprint** — small WASM binary, fast initialization
+
+## Requirements
+
+- Rust 1.80 or later (for building from source)
+- wasm-pack 0.12 or later
+- Streamline server 0.2.0 or later (with WebSocket gateway enabled)
+
+## Configuration
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `url` | `string` | — | WebSocket URL (e.g., `ws://localhost:9094/ws`) |
+| `reconnect` | `boolean` | `true` | Auto-reconnect on disconnect |
+| `reconnectInterval` | `number` | `1000` | Reconnect delay in milliseconds |
+| `maxReconnectAttempts` | `number` | `10` | Maximum reconnection attempts |
+| `compression` | `string` | `none` | Compression codec (`none`, `lz4`, `snappy`) |
 
 ## Quick Start
 
@@ -316,21 +335,81 @@ Browser  ──WebSocket──▶  Streamline Server (port 9094/ws)
 
 The SDK communicates over a JSON-based protocol on top of WebSocket. Messages are framed as `BrowserMessage` (client → server) and `BrowserResponse` (server → client).
 
-## Requirements
+## Admin Client
 
-- Rust 1.80 or later (for building)
-- wasm-pack 0.12 or later
-- Streamline server 0.2.0 or later (with WebSocket gateway enabled)
+The `AdminClient` provides HTTP-based topic and consumer group management:
 
-## Configuration
+```javascript
+import init, { AdminClient } from '@streamlinelabs/streamline-wasm';
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `url` | `string` | — | WebSocket URL (e.g., `ws://localhost:9094/ws`) |
-| `reconnect` | `boolean` | `true` | Auto-reconnect on disconnect |
-| `reconnectInterval` | `number` | `1000` | Reconnect delay in milliseconds |
-| `maxReconnectAttempts` | `number` | `10` | Maximum reconnection attempts |
-| `compression` | `string` | `none` | Compression codec (`none`, `lz4`, `snappy`) |
+await init();
+const admin = new AdminClient('http://localhost:9094');
+
+// Topic management
+const topics = await admin.list_topics();
+await admin.create_topic('orders', 3);
+const info = await admin.describe_topic('orders');
+await admin.delete_topic('orders');
+
+// Consumer groups
+const groups = await admin.list_consumer_groups();
+const detail = await admin.describe_consumer_group('my-group');
+
+// Server health
+const healthy = await admin.health();
+const info = await admin.server_info();
+```
+
+## Query Client
+
+Execute SQL queries against stream data directly from the browser:
+
+```javascript
+import init, { QueryClient } from '@streamlinelabs/streamline-wasm';
+
+await init();
+const query = new QueryClient('http://localhost:9094');
+
+const result = await query.execute('SELECT * FROM orders LIMIT 10');
+console.log('Columns:', result.columns);
+console.log('Rows:', result.rows);
+console.log('Count:', result.row_count);
+
+// Raw JSON response
+const raw = await query.execute_raw('SELECT count(*) FROM events');
+```
+
+## Schema Registry
+
+Register, retrieve, and validate schemas from the browser:
+
+```javascript
+import init, { SchemaRegistryClient, SchemaFormat } from '@streamlinelabs/streamline-wasm';
+
+await init();
+const registry = new SchemaRegistryClient('http://localhost:9094');
+
+// Register a JSON schema
+const id = await registry.register_schema(
+  'orders-value',
+  '{"type":"object","required":["orderId","amount"]}',
+  SchemaFormat.Json
+);
+
+// Retrieve latest schema
+const schema = await registry.get_latest_schema('orders-value');
+
+// Check compatibility before evolving
+const compatible = await registry.check_compatibility(
+  'orders-value', newSchema, SchemaFormat.Json
+);
+
+// List subjects
+const subjects = await registry.list_subjects();
+
+// Client-side JSON validation
+const valid = registry.validate_json(schema.schema, '{"orderId":"123","amount":99.99}');
+```
 
 ## Contributing
 
@@ -339,11 +418,6 @@ Contributions are welcome! Please see the [organization contributing guide](http
 ## License
 
 Licensed under the [Apache License, Version 2.0](LICENSE).
-<!-- chore: 88346698 -->
-<!-- fix: ceac64ce -->
-<!-- refactor: 9e81ef48 -->
-<!-- feat: c4d17430 -->
-<!-- style: 2455e340 -->
 
 ## Security
 

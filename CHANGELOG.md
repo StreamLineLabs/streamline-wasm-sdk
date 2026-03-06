@@ -6,14 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-- fix: resolve WASM memory growth issue (2026-03-06)
-
-- test: add playwright e2e tests (2026-03-06)
-
-- refactor: optimize serialization for WASM target (2026-03-06)
 ## [Unreleased]
 
-## [0.2.0] - 2026-02-28
+- fix: resolve WASM memory growth issue (2026-03-06)
+- test: add playwright e2e tests (2026-03-06)
+- refactor: optimize serialization for WASM target (2026-03-06)
 - **Testing**: add wasm-pack test suite for browser target
 - **Fixed**: resolve memory leak in message buffer allocation
 - **Added**: add wasm-bindgen exports for producer API
@@ -27,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Performance
 - Reduce WASM binary size with LTO
+
 
 ## [0.2.0] - 2024-01-01
 
@@ -42,4 +40,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Full `#[wasm_bindgen]` exports for JavaScript interop
 - npm package support (`@streamlinelabs/streamline-wasm-sdk`)
 - GitHub Actions CI with wasm-pack build and test
-

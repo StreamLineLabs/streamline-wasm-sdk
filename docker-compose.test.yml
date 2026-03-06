@@ -9,7 +9,6 @@ services:
       - "9094:9094"
     environment:
       - STREAMLINE_LOG_LEVEL=info
-      - STREAMLINE_PLAYGROUND=true
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9094/health"]
       interval: 5s
