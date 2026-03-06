@@ -1,15 +1,19 @@
 //! Browser-native WebAssembly SDK for the Streamline streaming platform.
 //!
 //! Provides a JavaScript-friendly API for producing and consuming messages
-//! via WebSocket, plus topic administration over HTTP.
+//! via WebSocket, plus topic administration and schema registry over HTTP.
 
+pub mod admin;
 mod protocol;
+pub mod schema_registry;
 pub mod telemetry;
 mod websocket;
 
 use wasm_bindgen::prelude::*;
 
+pub use admin::{AdminClient, QueryClient};
 pub use protocol::{AdminAction, BrowserMessage, BrowserResponse, TopicInfo};
+pub use schema_registry::{SchemaFormat, SchemaRegistryClient};
 pub use telemetry::{Telemetry, TelemetrySpan};
 pub use websocket::{ConnectionState, WsConnection};
 
