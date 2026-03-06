@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - fix: resolve WASM memory growth issue (2026-03-06)
 
 - test: add playwright e2e tests (2026-03-06)
+
+- refactor: optimize serialization for WASM target (2026-03-06)
 ## [Unreleased]
 
 ## [0.2.0] - 2026-02-28
