@@ -472,3 +472,24 @@ mod tests {
     }
 }
 
+
+
+/// Wire protocol message format version.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MessageFormat {
+    /// Legacy message format (v0/v1)
+    Legacy,
+    /// Record batch format (v2+)
+    RecordBatch,
+}
+
+impl MessageFormat {
+    /// Returns the format for a given magic byte value.
+    pub fn from_magic(magic: u8) -> Option<Self> {
+        match magic {
+            0 | 1 => Some(Self::Legacy),
+            2 => Some(Self::RecordBatch),
+            _ => None,
+        }
+    }
+}
