@@ -1,3 +1,6 @@
+/// SDK version constant.
+pub const SDK_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 //! Browser-native WebAssembly SDK for the Streamline streaming platform.
 //!
 //! Provides a JavaScript-friendly API for producing and consuming messages
