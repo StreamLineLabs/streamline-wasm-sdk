@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Typed error system (`error.rs`): `StreamlineError` and `ErrorCode` enums exported to JS via wasm_bindgen
+- Producer batching with configurable `batch_size`, auto-flush on threshold, and `flush()` method
+- `pending_count()` method on Producer for batch inspection
+
+### Fixed
+- WebSocket errors now use typed `StreamlineError` instead of opaque `JsValue` strings
+- Producer `send()`/`send_keyed()` errors use typed `StreamlineError::produce_error()`
+
+### Changed
 - fix: resolve WASM memory growth issue (2026-03-06)
 - test: add playwright e2e tests (2026-03-06)
 - refactor: optimize serialization for WASM target (2026-03-06)
