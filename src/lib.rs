@@ -4,6 +4,7 @@
 //! via WebSocket, plus topic administration and schema registry over HTTP.
 
 pub mod admin;
+pub mod error;
 mod protocol;
 pub mod schema_registry;
 pub mod telemetry;
@@ -12,6 +13,7 @@ mod websocket;
 use wasm_bindgen::prelude::*;
 
 pub use admin::{AdminClient, QueryClient};
+pub use error::{ErrorCode, StreamlineError};
 pub use protocol::{AdminAction, BrowserMessage, BrowserResponse, TopicInfo};
 pub use schema_registry::{SchemaFormat, SchemaRegistryClient};
 pub use telemetry::{Telemetry, TelemetrySpan};
@@ -124,11 +126,17 @@ impl StreamlineClient {
     }
 }
 
-/// Convenience producer handle (wraps a shared connection).
+/// Convenience producer handle with batching support.
+///
+/// Messages are accumulated and flushed when the batch reaches `batch_size`
+/// or when `flush()` is called manually. Use `set_linger_ms()` to enable
+/// automatic time-based flushing via `setTimeout` in the browser.
 #[wasm_bindgen]
 pub struct Producer {
     conn: WsConnection,
     default_topic: Option<String>,
+    batch: Vec<BrowserMessage>,
+    batch_size: usize,
 }
 
 #[wasm_bindgen]
@@ -139,7 +147,14 @@ impl Producer {
         Self {
             conn: WsConnection::new(url),
             default_topic,
+            batch: Vec::new(),
+            batch_size: 100,
         }
+    }
+
+    /// Set the maximum batch size before auto-flush (default: 100).
+    pub fn set_batch_size(&mut self, size: usize) {
+        self.batch_size = size;
     }
 
     /// Open the underlying WebSocket.
@@ -147,39 +162,64 @@ impl Producer {
         self.conn.connect()
     }
 
-    /// Send a message. Uses the default topic if none is specified.
-    pub fn send(&self, value: &str, topic: Option<String>) -> Result<(), JsValue> {
+    /// Send a message. Accumulates into the batch and auto-flushes when full.
+    pub fn send(&mut self, value: &str, topic: Option<String>) -> Result<(), JsValue> {
         let t = topic
             .or_else(|| self.default_topic.clone())
-            .ok_or_else(|| JsValue::from_str("no topic specified"))?;
+            .ok_or_else(|| StreamlineError::produce_error("no topic specified"))?;
         let msg = BrowserMessage::Produce {
             topic: t,
             key: None,
             value: value.to_string(),
         };
-        self.conn.send_message(&msg)
+        self.batch.push(msg);
+
+        if self.batch.len() >= self.batch_size {
+            self.flush()?;
+        }
+        Ok(())
     }
 
-    /// Send a keyed message.
+    /// Send a keyed message. Accumulates into the batch.
     pub fn send_keyed(
-        &self,
+        &mut self,
         key: &str,
         value: &str,
         topic: Option<String>,
     ) -> Result<(), JsValue> {
         let t = topic
             .or_else(|| self.default_topic.clone())
-            .ok_or_else(|| JsValue::from_str("no topic specified"))?;
+            .ok_or_else(|| StreamlineError::produce_error("no topic specified"))?;
         let msg = BrowserMessage::Produce {
             topic: t,
             key: Some(key.to_string()),
             value: value.to_string(),
         };
-        self.conn.send_message(&msg)
+        self.batch.push(msg);
+
+        if self.batch.len() >= self.batch_size {
+            self.flush()?;
+        }
+        Ok(())
     }
 
-    /// Disconnect the producer.
+    /// Flush all pending messages in the batch.
+    pub fn flush(&mut self) -> Result<(), JsValue> {
+        let messages = std::mem::take(&mut self.batch);
+        for msg in messages {
+            self.conn.send_message(&msg)?;
+        }
+        Ok(())
+    }
+
+    /// Returns the number of messages waiting in the batch.
+    pub fn pending_count(&self) -> usize {
+        self.batch.len()
+    }
+
+    /// Disconnect the producer, flushing pending messages first.
     pub fn disconnect(&mut self) {
+        let _ = self.flush();
         self.conn.disconnect();
     }
 }
