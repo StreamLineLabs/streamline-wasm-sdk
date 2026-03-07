@@ -2,6 +2,7 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{CloseEvent, ErrorEvent, MessageEvent, WebSocket};
 
+use crate::error::StreamlineError;
 use crate::protocol::BrowserMessage;
 
 /// Connection state for the WebSocket transport.
@@ -81,7 +82,7 @@ impl WsConnection {
             Some(ws) if ws.ready_state() == WebSocket::OPEN => {
                 ws.send_with_str(message)
             }
-            _ => Err(JsValue::from_str("WebSocket is not connected")),
+            _ => Err(StreamlineError::not_connected()),
         }
     }
 
@@ -255,7 +256,7 @@ impl WsConnection {
     pub(crate) fn send_message(&self, msg: &BrowserMessage) -> Result<(), JsValue> {
         let json = msg
             .to_json()
-            .map_err(|e| JsValue::from_str(&format!("serialization error: {e}")))?;
+            .map_err(|e| StreamlineError::serialization(&e.to_string()))?;
         self.send(&json)
     }
 
