@@ -1,4 +1,10 @@
+/// Default connection timeout in milliseconds.
+const DEFAULT_CONNECT_TIMEOUT_MS: u32 = 10_000;
+
 use wasm_bindgen::prelude::*;
+/// Default connection timeout in milliseconds.
+const DEFAULT_CONNECT_TIMEOUT_MS: u32 = 10_000;
+
 use wasm_bindgen::JsCast;
 use web_sys::{CloseEvent, ErrorEvent, MessageEvent, WebSocket};
 
