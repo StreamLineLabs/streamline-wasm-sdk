@@ -150,3 +150,15 @@ mod tests {
         assert_ne!(ErrorCode::ProduceError, ErrorCode::AdminError);
     }
 }
+
+
+impl StreamlineError {
+    /// Returns true if the error is transient and the operation can be retried.
+    pub fn is_retryable(&self) -> bool {
+        matches!(
+            self,
+            StreamlineError::ConnectionFailed { .. }
+            | StreamlineError::Timeout { .. }
+        )
+    }
+}
