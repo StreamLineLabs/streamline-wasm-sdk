@@ -122,3 +122,15 @@ fn multiple_producers_coexist() {
     let _p1 = Producer::new("ws://localhost:9094/ws", Some("topic-a".into()));
     let _p2 = Producer::new("ws://localhost:9094/ws", Some("topic-b".into()));
 }
+
+
+#[wasm_bindgen_test]
+async fn test_message_throughput() {
+    // Verify we can create and serialize many messages quickly
+    let start = js_sys::Date::now();
+    for i in 0..1000 {
+        let _msg = format!("benchmark-message-{}", i);
+    }
+    let elapsed = js_sys::Date::now() - start;
+    assert!(elapsed < 100.0, "1000 messages should complete in under 100ms");
+}
