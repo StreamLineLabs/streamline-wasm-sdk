@@ -19,6 +19,7 @@ Browser-native WebAssembly SDK for the [Streamline](https://github.com/streamlin
 - **Query client** — execute SQL queries against stream data from the browser
 - **Schema Registry** — register, retrieve, and validate schemas (Avro, Protobuf, JSON)
 - **TypeScript definitions** — generated `.d.ts` files for full IDE support
+- **Structured error types** — errors include a `retryable` flag and resolution `hint` for programmatic error handling
 - **Tiny footprint** — small WASM binary, fast initialization
 
 ## Requirements

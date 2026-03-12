@@ -471,3 +471,49 @@ fn admin_action_roundtrip() {
         _ => panic!("expected DeleteTopic"),
     }
 }
+
+// ── Consumer offset tracking ─────────────────────────────────────────
+
+#[wasm_bindgen_test]
+fn consumer_initial_offset_is_zero() {
+    let consumer = streamline_wasm_sdk::Consumer::new("ws://localhost:9094/ws", "test-topic");
+    assert_eq!(consumer.current_offset(), 0);
+    assert_eq!(consumer.committed_offset(), -1);
+}
+
+#[wasm_bindgen_test]
+fn consumer_advance_offset() {
+    let mut consumer = streamline_wasm_sdk::Consumer::new("ws://localhost:9094/ws", "test-topic");
+    consumer.advance_offset(5);
+    assert_eq!(consumer.current_offset(), 6); // offset + 1
+
+    // Advancing to a lower offset should be ignored
+    consumer.advance_offset(3);
+    assert_eq!(consumer.current_offset(), 6);
+}
+
+#[wasm_bindgen_test]
+fn consumer_advance_offset_sequential() {
+    let mut consumer = streamline_wasm_sdk::Consumer::new("ws://localhost:9094/ws", "events");
+    consumer.advance_offset(0);
+    assert_eq!(consumer.current_offset(), 1);
+    consumer.advance_offset(1);
+    assert_eq!(consumer.current_offset(), 2);
+    consumer.advance_offset(2);
+    assert_eq!(consumer.current_offset(), 3);
+}
+
+#[wasm_bindgen_test]
+fn consumer_commit_requires_connection() {
+    let mut consumer = streamline_wasm_sdk::Consumer::new("ws://localhost:9094/ws", "test-topic");
+    // Not connected, commit should fail
+    let result = consumer.commit();
+    assert!(result.is_err());
+}
+
+#[wasm_bindgen_test]
+fn consumer_seek_requires_connection() {
+    let mut consumer = streamline_wasm_sdk::Consumer::new("ws://localhost:9094/ws", "test-topic");
+    let result = consumer.seek(10);
+    assert!(result.is_err());
+}

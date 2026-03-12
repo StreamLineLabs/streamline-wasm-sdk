@@ -115,13 +115,49 @@ impl StreamlineError {
         )
         .into()
     }
-}
 
-impl From<StreamlineError> for JsValue {
-    fn from(err: StreamlineError) -> JsValue {
-        // Convert to a JsValue that JavaScript can catch and inspect.
-        // The wasm_bindgen #[wasm_bindgen] attribute makes fields accessible.
-        JsValue::from(err)
+    pub fn timeout(detail: &str) -> JsValue {
+        Self::new(
+            ErrorCode::Timeout,
+            &format!("operation timed out: {detail}"),
+            true,
+        )
+        .into()
+    }
+
+    pub fn auth_failed(detail: &str) -> JsValue {
+        Self::new(
+            ErrorCode::AuthenticationFailed,
+            &format!("authentication failed: {detail}"),
+            false,
+        )
+        .into()
+    }
+
+    /// Returns a resolution hint based on the error code.
+    pub fn hint(&self) -> String {
+        match self.code {
+            ErrorCode::NotConnected => "Call connect() before performing operations".to_string(),
+            ErrorCode::ConnectionFailed => {
+                "Check that the Streamline server is running and the URL is correct".to_string()
+            }
+            ErrorCode::Timeout => {
+                "Consider increasing timeout settings or checking server load".to_string()
+            }
+            ErrorCode::AuthenticationFailed => {
+                "Verify your credentials and authentication configuration".to_string()
+            }
+            ErrorCode::TopicNotFound => "Create the topic first using the admin API".to_string(),
+            ErrorCode::SerializationError => {
+                "Check that the message value is valid JSON".to_string()
+            }
+            _ => "Check server logs for more details".to_string(),
+        }
+    }
+
+    /// Returns true if this error is transient and the operation can be retried.
+    pub fn is_retryable(&self) -> bool {
+        self.retryable
     }
 }
 
@@ -149,16 +185,145 @@ mod tests {
         assert_ne!(ErrorCode::NotConnected, ErrorCode::Timeout);
         assert_ne!(ErrorCode::ProduceError, ErrorCode::AdminError);
     }
-}
 
+    #[test]
+    fn test_is_retryable() {
+        let retryable = StreamlineError::new(ErrorCode::ConnectionFailed, "conn err", true);
+        assert!(retryable.is_retryable());
 
-impl StreamlineError {
-    /// Returns true if the error is transient and the operation can be retried.
-    pub fn is_retryable(&self) -> bool {
-        matches!(
-            self,
-            StreamlineError::ConnectionFailed { .. }
-            | StreamlineError::Timeout { .. }
-        )
+        let not_retryable =
+            StreamlineError::new(ErrorCode::AuthenticationFailed, "bad auth", false);
+        assert!(!not_retryable.is_retryable());
+    }
+
+    #[test]
+    fn test_hint_for_known_codes() {
+        let err = StreamlineError::new(ErrorCode::NotConnected, "not connected", true);
+        assert!(err.hint().contains("connect()"));
+
+        let err = StreamlineError::new(ErrorCode::TopicNotFound, "no topic", false);
+        assert!(err.hint().contains("admin API"));
+    }
+
+    #[test]
+    fn test_hint_for_unknown_codes() {
+        let err = StreamlineError::new(ErrorCode::Unknown, "unknown", false);
+        assert!(err.hint().contains("server logs"));
+    }
+
+    #[test]
+    #[cfg(target_arch = "wasm32")]
+    fn test_factory_methods() {
+        // These return JsValue so we can't inspect deeply, but verify they don't panic
+        let _ = StreamlineError::not_connected();
+        let _ = StreamlineError::serialization("bad data");
+        let _ = StreamlineError::connection_failed("refused");
+        let _ = StreamlineError::produce_error("full");
+        let _ = StreamlineError::timeout("fetch");
+        let _ = StreamlineError::auth_failed("bad creds");
+    }
+
+    // ── Additional coverage ──────────────────────────────────────────
+
+    #[test]
+    fn test_error_clone() {
+        let err = StreamlineError::new(ErrorCode::Timeout, "timed out", true);
+        let cloned = err.clone();
+        assert_eq!(cloned.code(), ErrorCode::Timeout);
+        assert_eq!(cloned.message(), "timed out");
+        assert!(cloned.retryable());
+    }
+
+    #[test]
+    fn test_error_debug_format() {
+        let err = StreamlineError::new(ErrorCode::Unknown, "mystery", false);
+        let dbg = format!("{:?}", err);
+        assert!(dbg.contains("StreamlineError"));
+        assert!(dbg.contains("Unknown"));
+    }
+
+    #[test]
+    fn test_error_code_debug_format() {
+        let dbg = format!("{:?}", ErrorCode::ConnectionFailed);
+        assert_eq!(dbg, "ConnectionFailed");
+    }
+
+    #[test]
+    fn test_error_code_clone_copy() {
+        let code = ErrorCode::ProduceError;
+        let copied = code;
+        let cloned = code.clone();
+        assert_eq!(code, copied);
+        assert_eq!(code, cloned);
+    }
+
+    #[test]
+    fn test_hint_connection_failed() {
+        let err = StreamlineError::new(ErrorCode::ConnectionFailed, "refused", true);
+        assert!(err.hint().contains("server is running"));
+    }
+
+    #[test]
+    fn test_hint_timeout() {
+        let err = StreamlineError::new(ErrorCode::Timeout, "slow", true);
+        assert!(err.hint().contains("timeout"));
+    }
+
+    #[test]
+    fn test_hint_auth_failed() {
+        let err = StreamlineError::new(ErrorCode::AuthenticationFailed, "bad", false);
+        assert!(err.hint().contains("credentials"));
+    }
+
+    #[test]
+    fn test_hint_serialization_error() {
+        let err = StreamlineError::new(ErrorCode::SerializationError, "bad json", false);
+        assert!(err.hint().contains("JSON"));
+    }
+
+    #[test]
+    fn test_hint_produce_error_falls_through() {
+        let err = StreamlineError::new(ErrorCode::ProduceError, "full", true);
+        assert!(err.hint().contains("server logs"));
+    }
+
+    #[test]
+    fn test_hint_admin_error_falls_through() {
+        let err = StreamlineError::new(ErrorCode::AdminError, "fail", false);
+        assert!(err.hint().contains("server logs"));
+    }
+
+    #[test]
+    fn test_hint_query_error_falls_through() {
+        let err = StreamlineError::new(ErrorCode::QueryError, "fail", false);
+        assert!(err.hint().contains("server logs"));
+    }
+
+    #[test]
+    fn test_hint_schema_registry_error_falls_through() {
+        let err = StreamlineError::new(ErrorCode::SchemaRegistryError, "fail", false);
+        assert!(err.hint().contains("server logs"));
+    }
+
+    #[test]
+    fn test_all_error_codes_distinct() {
+        let codes = [
+            ErrorCode::NotConnected,
+            ErrorCode::ConnectionFailed,
+            ErrorCode::SerializationError,
+            ErrorCode::TopicNotFound,
+            ErrorCode::AuthenticationFailed,
+            ErrorCode::Timeout,
+            ErrorCode::ProduceError,
+            ErrorCode::AdminError,
+            ErrorCode::QueryError,
+            ErrorCode::SchemaRegistryError,
+            ErrorCode::Unknown,
+        ];
+        for i in 0..codes.len() {
+            for j in (i + 1)..codes.len() {
+                assert_ne!(codes[i], codes[j], "codes at {i} and {j} should differ");
+            }
+        }
     }
 }

@@ -40,21 +40,21 @@ fn producer_disconnect_on_fresh() {
 
 #[wasm_bindgen_test]
 fn producer_send_without_connection_fails() {
-    let producer = Producer::new("ws://localhost:9094/ws", Some("topic".into()));
+    let mut producer = Producer::new("ws://localhost:9094/ws", Some("topic".into()));
     let result = producer.send("hello", None);
     assert!(result.is_err());
 }
 
 #[wasm_bindgen_test]
 fn producer_send_without_topic_or_default_fails() {
-    let producer = Producer::new("ws://localhost:9094/ws", None);
+    let mut producer = Producer::new("ws://localhost:9094/ws", None);
     let result = producer.send("hello", None);
     assert!(result.is_err());
 }
 
 #[wasm_bindgen_test]
 fn producer_send_keyed_without_connection_fails() {
-    let producer = Producer::new("ws://localhost:9094/ws", Some("topic".into()));
+    let mut producer = Producer::new("ws://localhost:9094/ws", Some("topic".into()));
     let result = producer.send_keyed("key", "value", None);
     assert!(result.is_err());
 }

@@ -470,12 +470,259 @@ mod tests {
         let json = r#"{"type":"unknown_variant","foo":"bar"}"#;
         assert!(BrowserResponse::from_json(json).is_err());
     }
+
+    // ── MessageFormat ────────────────────────────────────────────────
+
+    #[test]
+    fn test_message_format_from_magic_legacy_v0() {
+        assert_eq!(MessageFormat::from_magic(0), Some(MessageFormat::Legacy));
+    }
+
+    #[test]
+    fn test_message_format_from_magic_legacy_v1() {
+        assert_eq!(MessageFormat::from_magic(1), Some(MessageFormat::Legacy));
+    }
+
+    #[test]
+    fn test_message_format_from_magic_record_batch() {
+        assert_eq!(
+            MessageFormat::from_magic(2),
+            Some(MessageFormat::RecordBatch)
+        );
+    }
+
+    #[test]
+    fn test_message_format_from_magic_unknown() {
+        assert_eq!(MessageFormat::from_magic(3), None);
+        assert_eq!(MessageFormat::from_magic(255), None);
+    }
+
+    #[test]
+    fn test_message_format_equality() {
+        assert_eq!(MessageFormat::Legacy, MessageFormat::Legacy);
+        assert_eq!(MessageFormat::RecordBatch, MessageFormat::RecordBatch);
+        assert_ne!(MessageFormat::Legacy, MessageFormat::RecordBatch);
+    }
+
+    #[test]
+    fn test_message_format_clone_copy() {
+        let fmt = MessageFormat::RecordBatch;
+        let copied = fmt;
+        let cloned = fmt.clone();
+        assert_eq!(fmt, copied);
+        assert_eq!(fmt, cloned);
+    }
+
+    #[test]
+    fn test_message_format_debug() {
+        assert_eq!(format!("{:?}", MessageFormat::Legacy), "Legacy");
+        assert_eq!(format!("{:?}", MessageFormat::RecordBatch), "RecordBatch");
+    }
+
+    // ── Additional round-trip tests ──────────────────────────────────
+
+    #[test]
+    fn test_unsubscribe_roundtrip() {
+        let msg = BrowserMessage::Unsubscribe {
+            topic: "unsub-rt".into(),
+        };
+        let json = msg.to_json().unwrap();
+        let deser: BrowserMessage = serde_json::from_str(&json).unwrap();
+        match deser {
+            BrowserMessage::Unsubscribe { topic } => assert_eq!(topic, "unsub-rt"),
+            _ => panic!("expected Unsubscribe"),
+        }
+    }
+
+    #[test]
+    fn test_admin_list_topics_roundtrip() {
+        let msg = BrowserMessage::Admin {
+            action: AdminAction::ListTopics,
+        };
+        let json = msg.to_json().unwrap();
+        let deser: BrowserMessage = serde_json::from_str(&json).unwrap();
+        match deser {
+            BrowserMessage::Admin { action } => match action {
+                AdminAction::ListTopics => {}
+                _ => panic!("expected ListTopics"),
+            },
+            _ => panic!("expected Admin"),
+        }
+    }
+
+    #[test]
+    fn test_admin_delete_topic_roundtrip() {
+        let msg = BrowserMessage::Admin {
+            action: AdminAction::DeleteTopic {
+                name: "del-rt".into(),
+            },
+        };
+        let json = msg.to_json().unwrap();
+        let deser: BrowserMessage = serde_json::from_str(&json).unwrap();
+        match deser {
+            BrowserMessage::Admin { action } => match action {
+                AdminAction::DeleteTopic { name } => assert_eq!(name, "del-rt"),
+                _ => panic!("expected DeleteTopic"),
+            },
+            _ => panic!("expected Admin"),
+        }
+    }
+
+    #[test]
+    fn test_response_ack_roundtrip() {
+        let resp = BrowserResponse::Ack {
+            topic: Some("ack-rt".into()),
+            offset: Some(99),
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        let deser = BrowserResponse::from_json(&json).unwrap();
+        match deser {
+            BrowserResponse::Ack { topic, offset } => {
+                assert_eq!(topic.unwrap(), "ack-rt");
+                assert_eq!(offset.unwrap(), 99);
+            }
+            _ => panic!("expected Ack"),
+        }
+    }
+
+    #[test]
+    fn test_response_topic_list_roundtrip() {
+        let resp = BrowserResponse::TopicList {
+            topics: vec![
+                TopicInfo {
+                    name: "a".into(),
+                    partitions: 1,
+                },
+                TopicInfo {
+                    name: "b".into(),
+                    partitions: 8,
+                },
+            ],
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        let deser = BrowserResponse::from_json(&json).unwrap();
+        match deser {
+            BrowserResponse::TopicList { topics } => {
+                assert_eq!(topics.len(), 2);
+                assert_eq!(topics[0].name, "a");
+                assert_eq!(topics[1].partitions, 8);
+            }
+            _ => panic!("expected TopicList"),
+        }
+    }
+
+    // ── Additional edge cases ────────────────────────────────────────
+
+    #[test]
+    fn test_produce_with_empty_key() {
+        let msg = BrowserMessage::Produce {
+            topic: "t".into(),
+            key: Some("".into()),
+            value: "v".into(),
+        };
+        let json = msg.to_json().unwrap();
+        assert!(json.contains("\"key\":\"\""));
+        let deser: BrowserMessage = serde_json::from_str(&json).unwrap();
+        match deser {
+            BrowserMessage::Produce { key, .. } => assert_eq!(key.unwrap(), ""),
+            _ => panic!("expected Produce"),
+        }
+    }
+
+    #[test]
+    fn test_consume_without_group_roundtrip() {
+        let msg = BrowserMessage::Consume {
+            topic: "c-rt".into(),
+            group_id: None,
+        };
+        let json = msg.to_json().unwrap();
+        let deser: BrowserMessage = serde_json::from_str(&json).unwrap();
+        match deser {
+            BrowserMessage::Consume { topic, group_id } => {
+                assert_eq!(topic, "c-rt");
+                assert!(group_id.is_none());
+            }
+            _ => panic!("expected Consume"),
+        }
+    }
+
+    #[test]
+    fn test_topic_info_debug_format() {
+        let info = TopicInfo {
+            name: "debug".into(),
+            partitions: 2,
+        };
+        let dbg = format!("{:?}", info);
+        assert!(dbg.contains("debug"));
+        assert!(dbg.contains("2"));
+    }
+
+    #[test]
+    fn test_admin_action_debug_format() {
+        let action = AdminAction::CreateTopic {
+            name: "dbg".into(),
+            partitions: Some(1),
+        };
+        let dbg = format!("{:?}", action);
+        assert!(dbg.contains("CreateTopic"));
+        assert!(dbg.contains("dbg"));
+    }
+
+    #[test]
+    fn test_browser_message_debug_format() {
+        let msg = BrowserMessage::Subscribe { topic: "t".into() };
+        let dbg = format!("{:?}", msg);
+        assert!(dbg.contains("Subscribe"));
+    }
+
+    #[test]
+    fn test_browser_response_debug_format() {
+        let resp = BrowserResponse::Error {
+            code: 400,
+            message: "bad request".into(),
+        };
+        let dbg = format!("{:?}", resp);
+        assert!(dbg.contains("Error"));
+        assert!(dbg.contains("400"));
+    }
+
+    #[test]
+    fn test_missing_required_field_returns_error() {
+        // Missing "value" in produce
+        let json = r#"{"type":"produce","topic":"t"}"#;
+        assert!(serde_json::from_str::<BrowserMessage>(json).is_err());
+    }
+
+    #[test]
+    fn test_topic_info_many_partitions() {
+        let info = TopicInfo {
+            name: "big".into(),
+            partitions: u32::MAX,
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        let deser: TopicInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(deser.partitions, u32::MAX);
+    }
+
+    #[test]
+    fn test_response_message_with_zero_offsets() {
+        let json = r#"{"type":"message","topic":"t","value":"v","offset":0,"timestamp":0}"#;
+        let resp = BrowserResponse::from_json(json).unwrap();
+        match resp {
+            BrowserResponse::Message {
+                offset, timestamp, ..
+            } => {
+                assert_eq!(offset, 0);
+                assert_eq!(timestamp, 0);
+            }
+            _ => panic!("expected Message"),
+        }
+    }
 }
-
-
 
 /// Wire protocol message format version.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum MessageFormat {
     /// Legacy message format (v0/v1)
     Legacy,
@@ -485,6 +732,7 @@ pub enum MessageFormat {
 
 impl MessageFormat {
     /// Returns the format for a given magic byte value.
+    #[allow(dead_code)]
     pub fn from_magic(magic: u8) -> Option<Self> {
         match magic {
             0 | 1 => Some(Self::Legacy),

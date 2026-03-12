@@ -4,16 +4,81 @@ on:
   push:
   pull_request:
 
+env:
+  WASM_BINDGEN_TEST_TIMEOUT: 120
+
 jobs:
-  build:
+  check:
+    name: Lint & Format
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.80"
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --all-targets -- -D warnings
 
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.80"
       - run: cargo test
 
-  # v0.3.0: Added wasm-pack test step
+  wasm-build:
+    name: WASM Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.80"
+          targets: wasm32-unknown-unknown
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+      - name: Build WASM (web target)
+        run: wasm-pack build --target web --release
+      - name: Build WASM (bundler target)
+        run: wasm-pack build --target bundler --release --out-dir pkg-bundler
+      - name: Verify TypeScript definitions
+        run: test -f pkg/streamline_wasm_sdk.d.ts
+
+  wasm-test:
+    name: WASM Browser Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.80"
+          targets: wasm32-unknown-unknown
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+      - name: Run WASM tests (headless Chrome)
+        run: wasm-pack test --headless --chrome
+
+  browser-tests:
+    name: Browser Integration Tests
+    runs-on: ubuntu-latest
+    needs: test
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.80"
+          targets: wasm32-unknown-unknown
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+      - name: Install Chrome
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+      - name: Run browser integration tests (headless Chrome)
+        run: wasm-pack test --headless --chrome

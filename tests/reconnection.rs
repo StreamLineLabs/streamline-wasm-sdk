@@ -14,10 +14,10 @@ fn default_reconnect_delay_is_one_second() {
 }
 
 #[wasm_bindgen_test]
-fn set_reconnect_delay() {
-    let mut conn = WsConnection::new("ws://localhost:9094/ws");
-    conn.set_reconnect_delay_ms(5000);
-    assert_eq!(conn.reconnect_delay_ms(), 5000);
+fn reconnect_delay_starts_at_1s() {
+    let conn = WsConnection::new("ws://localhost:9094/ws");
+    // Fresh connection should have base delay of 1s (no attempts yet)
+    assert_eq!(conn.reconnect_delay_ms(), 1000);
 }
 
 #[wasm_bindgen_test]

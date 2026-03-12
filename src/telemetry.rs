@@ -158,9 +158,7 @@ impl Telemetry {
         }
 
         web_sys::console::time_end_with_label(&span.label);
-        web_sys::console::error_1(
-            &format!("[streamline] {} failed: {}", span.label, error).into(),
-        );
+        web_sys::console::error_1(&format!("[streamline] {} failed: {}", span.label, error).into());
 
         let mark_end = format!("{}-error", span.label);
         if let Some(performance) = get_performance() {
@@ -284,5 +282,100 @@ mod tests {
         assert!(!telemetry.enabled());
         telemetry.set_enabled(true);
         assert!(telemetry.enabled());
+    }
+
+    // ── Span creation ────────────────────────────────────────────────
+
+    #[test]
+    fn test_start_produce_span_fields() {
+        let telemetry = Telemetry::disabled();
+        let span = telemetry.start_produce("orders");
+        assert_eq!(span.label(), "orders produce");
+        assert_eq!(span.topic, "orders");
+        assert_eq!(span.operation, "produce");
+        assert_eq!(span.mark_start, "orders produce-start");
+    }
+
+    #[test]
+    fn test_start_consume_span_fields() {
+        let telemetry = Telemetry::disabled();
+        let span = telemetry.start_consume("events");
+        assert_eq!(span.label(), "events consume");
+        assert_eq!(span.topic, "events");
+        assert_eq!(span.operation, "consume");
+        assert_eq!(span.mark_start, "events consume-start");
+    }
+
+    #[test]
+    fn test_start_process_span_fields() {
+        let telemetry = Telemetry::disabled();
+        let span = telemetry.start_process("metrics");
+        assert_eq!(span.label(), "metrics process");
+        assert_eq!(span.topic, "metrics");
+        assert_eq!(span.operation, "process");
+        assert_eq!(span.mark_start, "metrics process-start");
+    }
+
+    #[test]
+    fn test_span_label_format_with_special_chars() {
+        let telemetry = Telemetry::disabled();
+        let span = telemetry.start_produce("my-topic.v2");
+        assert_eq!(span.label(), "my-topic.v2 produce");
+    }
+
+    #[test]
+    fn test_disabled_telemetry_still_creates_spans() {
+        let telemetry = Telemetry::disabled();
+        let span = telemetry.start_produce("t");
+        // Span is created even when disabled (browser API calls are skipped)
+        assert_eq!(span.topic, "t");
+        assert_eq!(span.operation, "produce");
+    }
+
+    #[test]
+    fn test_end_span_disabled_is_noop() {
+        let telemetry = Telemetry::disabled();
+        let span = telemetry.start_produce("t");
+        // Should not panic even without browser APIs
+        telemetry.end_span(span);
+    }
+
+    #[test]
+    fn test_end_span_with_error_disabled_is_noop() {
+        let telemetry = Telemetry::disabled();
+        let span = telemetry.start_produce("t");
+        // Should not panic even without browser APIs
+        telemetry.end_span_with_error(span, "something broke");
+    }
+
+    #[test]
+    fn test_multiple_spans_independent() {
+        let telemetry = Telemetry::disabled();
+        let span1 = telemetry.start_produce("topic-a");
+        let span2 = telemetry.start_consume("topic-b");
+        assert_ne!(span1.label(), span2.label());
+        assert_ne!(span1.operation, span2.operation);
+    }
+
+    #[test]
+    fn test_span_topic_js_getter() {
+        let span = TelemetrySpan {
+            label: "t produce".to_string(),
+            mark_start: "t produce-start".to_string(),
+            topic: "t".to_string(),
+            operation: "produce".to_string(),
+        };
+        assert_eq!(span.topic_js(), "t");
+    }
+
+    #[test]
+    fn test_span_operation_js_getter() {
+        let span = TelemetrySpan {
+            label: "t consume".to_string(),
+            mark_start: "t consume-start".to_string(),
+            topic: "t".to_string(),
+            operation: "consume".to_string(),
+        };
+        assert_eq!(span.operation_js(), "consume");
     }
 }

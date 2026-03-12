@@ -24,7 +24,7 @@
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{Headers, Request, RequestInit, RequestMode, Response};
+use web_sys::{Request, RequestInit, RequestMode, Response};
 
 /// Schema format types supported by the Streamline Schema Registry.
 #[wasm_bindgen]
@@ -236,10 +236,11 @@ impl SchemaRegistryClient {
 }
 
 impl SchemaRegistryClient {
+    #[allow(dead_code)]
     async fn http_get(&self, url: &str) -> Result<String, JsValue> {
-        let mut opts = RequestInit::new();
-        opts.method("GET");
-        opts.mode(RequestMode::Cors);
+        let opts = RequestInit::new();
+        opts.set_method("GET");
+        opts.set_mode(RequestMode::Cors);
 
         let request = Request::new_with_str_and_init(url, &opts)?;
         self.set_common_headers(&request)?;
@@ -262,16 +263,14 @@ impl SchemaRegistryClient {
     }
 
     async fn http_post(&self, url: &str, body: &str) -> Result<String, JsValue> {
-        let mut opts = RequestInit::new();
-        opts.method("POST");
-        opts.mode(RequestMode::Cors);
-        opts.body(Some(&JsValue::from_str(body)));
+        let opts = RequestInit::new();
+        opts.set_method("POST");
+        opts.set_mode(RequestMode::Cors);
+        opts.set_body(&JsValue::from_str(body));
 
         let request = Request::new_with_str_and_init(url, &opts)?;
         self.set_common_headers(&request)?;
-        request
-            .headers()
-            .set("Content-Type", "application/json")?;
+        request.headers().set("Content-Type", "application/json")?;
 
         let window = web_sys::window().ok_or_else(|| JsValue::from_str("no window"))?;
         let resp_value = JsFuture::from(window.fetch_with_request(&request)).await?;
@@ -290,10 +289,11 @@ impl SchemaRegistryClient {
             .ok_or_else(|| JsValue::from_str("response is not a string"))
     }
 
+    #[allow(dead_code)]
     async fn http_delete(&self, url: &str) -> Result<String, JsValue> {
-        let mut opts = RequestInit::new();
-        opts.method("DELETE");
-        opts.mode(RequestMode::Cors);
+        let opts = RequestInit::new();
+        opts.set_method("DELETE");
+        opts.set_mode(RequestMode::Cors);
 
         let request = Request::new_with_str_and_init(url, &opts)?;
         self.set_common_headers(&request)?;
@@ -342,7 +342,8 @@ fn basic_json_validate(schema: &serde_json::Value, value: &serde_json::Value) ->
                     return false;
                 }
                 if let Some(required) = schema.get("required").and_then(|r| r.as_array()) {
-                    let obj = value.as_object().unwrap_or(&serde_json::Map::new());
+                    let empty_map = serde_json::Map::new();
+                    let obj = value.as_object().unwrap_or(&empty_map);
                     for field in required {
                         if let Some(field_name) = field.as_str() {
                             if !obj.contains_key(field_name) {
@@ -454,20 +455,38 @@ mod tests {
     #[test]
     fn test_validate_json_type_checks() {
         let string_schema: serde_json::Value = serde_json::json!({"type": "string"});
-        assert!(basic_json_validate(&string_schema, &serde_json::json!("hello")));
+        assert!(basic_json_validate(
+            &string_schema,
+            &serde_json::json!("hello")
+        ));
         assert!(!basic_json_validate(&string_schema, &serde_json::json!(42)));
 
         let number_schema: serde_json::Value = serde_json::json!({"type": "number"});
-        assert!(basic_json_validate(&number_schema, &serde_json::json!(3.14)));
-        assert!(!basic_json_validate(&number_schema, &serde_json::json!("text")));
+        assert!(basic_json_validate(
+            &number_schema,
+            &serde_json::json!(3.14)
+        ));
+        assert!(!basic_json_validate(
+            &number_schema,
+            &serde_json::json!("text")
+        ));
 
         let bool_schema: serde_json::Value = serde_json::json!({"type": "boolean"});
         assert!(basic_json_validate(&bool_schema, &serde_json::json!(true)));
-        assert!(!basic_json_validate(&bool_schema, &serde_json::json!("true")));
+        assert!(!basic_json_validate(
+            &bool_schema,
+            &serde_json::json!("true")
+        ));
 
         let array_schema: serde_json::Value = serde_json::json!({"type": "array"});
-        assert!(basic_json_validate(&array_schema, &serde_json::json!([1, 2])));
-        assert!(!basic_json_validate(&array_schema, &serde_json::json!("not array")));
+        assert!(basic_json_validate(
+            &array_schema,
+            &serde_json::json!([1, 2])
+        ));
+        assert!(!basic_json_validate(
+            &array_schema,
+            &serde_json::json!("not array")
+        ));
 
         let null_schema: serde_json::Value = serde_json::json!({"type": "null"});
         assert!(basic_json_validate(&null_schema, &serde_json::Value::Null));
@@ -499,5 +518,126 @@ mod tests {
         let mut client = SchemaRegistryClient::new("http://localhost:9094");
         client.set_auth_token("my-token");
         assert_eq!(client.auth_token.as_deref(), Some("my-token"));
+    }
+
+    // ── Additional coverage ──────────────────────────────────────────
+
+    #[test]
+    fn test_schema_format_clone_copy() {
+        let fmt = SchemaFormat::Protobuf;
+        let copied = fmt;
+        let cloned = fmt.clone();
+        assert_eq!(fmt, copied);
+        assert_eq!(fmt, cloned);
+    }
+
+    #[test]
+    fn test_schema_format_debug() {
+        assert_eq!(format!("{:?}", SchemaFormat::Avro), "Avro");
+        assert_eq!(format!("{:?}", SchemaFormat::Protobuf), "Protobuf");
+        assert_eq!(format!("{:?}", SchemaFormat::Json), "Json");
+    }
+
+    #[test]
+    fn test_schema_info_roundtrip() {
+        let info = SchemaInfo {
+            subject: "events-value".into(),
+            id: 10,
+            version: 5,
+            schema_type: "JSON".into(),
+            schema: r#"{"type":"object"}"#.into(),
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        let deser: SchemaInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(deser.subject, "events-value");
+        assert_eq!(deser.id, 10);
+        assert_eq!(deser.version, 5);
+        assert_eq!(deser.schema_type, "JSON");
+        assert_eq!(deser.schema, r#"{"type":"object"}"#);
+    }
+
+    #[test]
+    fn test_validate_json_integer_type() {
+        let schema: serde_json::Value = serde_json::json!({"type": "integer"});
+        assert!(basic_json_validate(&schema, &serde_json::json!(42)));
+        assert!(basic_json_validate(&schema, &serde_json::json!(3.14)));
+        assert!(!basic_json_validate(&schema, &serde_json::json!("text")));
+    }
+
+    #[test]
+    fn test_validate_json_object_type_mismatch() {
+        let schema: serde_json::Value = serde_json::json!({"type": "object"});
+        assert!(!basic_json_validate(&schema, &serde_json::json!("string")));
+        assert!(!basic_json_validate(&schema, &serde_json::json!(42)));
+        assert!(!basic_json_validate(&schema, &serde_json::json!([1, 2])));
+        assert!(basic_json_validate(&schema, &serde_json::json!({})));
+    }
+
+    #[test]
+    fn test_validate_json_object_without_required() {
+        let schema: serde_json::Value = serde_json::json!({"type": "object"});
+        // Without required fields, any object passes
+        assert!(basic_json_validate(
+            &schema,
+            &serde_json::json!({"anything": "goes"})
+        ));
+        assert!(basic_json_validate(&schema, &serde_json::json!({})));
+    }
+
+    #[test]
+    fn test_validate_json_unknown_type_always_passes() {
+        let schema: serde_json::Value = serde_json::json!({"type": "custom_unknown"});
+        assert!(basic_json_validate(&schema, &serde_json::json!("anything")));
+        assert!(basic_json_validate(&schema, &serde_json::json!(42)));
+    }
+
+    #[test]
+    fn test_validate_json_object_with_extra_fields() {
+        let schema: serde_json::Value = serde_json::json!({
+            "type": "object",
+            "required": ["name"]
+        });
+        // Extra fields should be fine (basic validation only checks required)
+        let value = serde_json::json!({"name": "Alice", "extra": "field"});
+        assert!(basic_json_validate(&schema, &value));
+    }
+
+    #[test]
+    fn test_validate_json_required_non_string_ignored() {
+        let schema: serde_json::Value = serde_json::json!({
+            "type": "object",
+            "required": [42]
+        });
+        // Non-string required entries are skipped
+        assert!(basic_json_validate(&schema, &serde_json::json!({})));
+    }
+
+    #[test]
+    fn test_compatibility_result_incompatible() {
+        let json = r#"{"is_compatible":false}"#;
+        let result: CompatibilityResult = serde_json::from_str(json).unwrap();
+        assert!(!result.is_compatible);
+    }
+
+    #[test]
+    fn test_register_response_roundtrip() {
+        let resp = RegisterResponse { id: 42 };
+        let json = serde_json::to_string(&resp).unwrap();
+        let deser: RegisterResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(deser.id, 42);
+    }
+
+    #[test]
+    fn test_client_overwrite_auth_token() {
+        let mut client = SchemaRegistryClient::new("http://localhost:9094");
+        client.set_auth_token("first");
+        client.set_auth_token("second");
+        assert_eq!(client.auth_token.as_deref(), Some("second"));
+    }
+
+    #[test]
+    fn test_client_with_custom_port() {
+        let client = SchemaRegistryClient::new("http://registry.local:8081");
+        assert_eq!(client.base_url, "http://registry.local:8081");
     }
 }

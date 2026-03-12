@@ -3,8 +3,8 @@
 //! Tests serialization edge cases, malformed inputs, and boundary conditions
 //! for the BrowserMessage and BrowserResponse types.
 
-use wasm_bindgen_test::*;
 use streamline_wasm_sdk::{AdminAction, BrowserMessage, BrowserResponse, TopicInfo};
+use wasm_bindgen_test::*;
 
 wasm_bindgen_test_configure!(run_in_browser);
 
@@ -172,4 +172,3 @@ fn topic_info_with_unicode_name() {
     assert_eq!(deser.name, "topic-日本語");
 }
 // consolidate wasm export macros
-
