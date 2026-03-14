@@ -412,6 +412,20 @@ const subjects = await registry.list_subjects();
 const valid = registry.validate_json(schema.schema, '{"orderId":"123","amount":99.99}');
 ```
 
+## Examples
+
+The [`examples/`](examples/) directory contains runnable examples:
+
+| Example | Description |
+|---------|-------------|
+| [basic-usage.js](examples/basic-usage.js) | Produce, consume, and admin operations |
+| [query-usage.js](examples/query-usage.js) | SQL analytics via REST API |
+| [schema-registry.js](examples/schema-registry.js) | Schema registration and validation |
+| [circuit-breaker.js](examples/circuit-breaker.js) | Resilient production with circuit breaker |
+| [security.js](examples/security.js) | Token authentication and secure connections |
+| [quickstart.html](examples/quickstart.html) | Runnable HTML page with WebSocket client |
+| [playground.html](examples/playground.html) | Interactive playground UI |
+
 ## Contributing
 
 Contributions are welcome! Please see the [organization contributing guide](https://github.com/streamlinelabs/.github/blob/main/CONTRIBUTING.md) for guidelines.
