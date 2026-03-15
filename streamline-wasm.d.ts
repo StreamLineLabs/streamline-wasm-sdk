@@ -8,6 +8,38 @@
  */
 
 /**
+ * Error codes returned by Streamline operations.
+ */
+export enum ErrorCode {
+  NotConnected = "NotConnected",
+  ConnectionFailed = "ConnectionFailed",
+  SerializationError = "SerializationError",
+  TopicNotFound = "TopicNotFound",
+  AuthenticationFailed = "AuthenticationFailed",
+  Timeout = "Timeout",
+  ProduceError = "ProduceError",
+  AdminError = "AdminError",
+  QueryError = "QueryError",
+  SchemaRegistryError = "SchemaRegistryError",
+  Unknown = "Unknown",
+}
+
+/**
+ * Error type returned by Streamline operations.
+ * Includes error code, human-readable message, retryable flag, and contextual hint.
+ */
+export class StreamlineError extends Error {
+  /** The error code classifying this error. */
+  readonly code: ErrorCode;
+  /** Whether this error is retryable (e.g., connection issues, timeouts). */
+  readonly retryable: boolean;
+  /** Returns a contextual hint for resolving this error. */
+  hint(): string;
+
+  free(): void;
+}
+
+/**
  * Initialize the WASM module. Must be called before using any SDK classes.
  *
  * @example
