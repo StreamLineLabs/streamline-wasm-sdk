@@ -151,6 +151,18 @@ impl StreamlineError {
             ErrorCode::SerializationError => {
                 "Check that the message value is valid JSON".to_string()
             }
+            ErrorCode::ProduceError => {
+                "Check that the topic exists, you have write permissions, and the message size is within limits".to_string()
+            }
+            ErrorCode::AdminError => {
+                "Verify you have admin permissions and the server is accepting admin operations".to_string()
+            }
+            ErrorCode::QueryError => {
+                "Check your SQL syntax and ensure the queried topics exist".to_string()
+            }
+            ErrorCode::SchemaRegistryError => {
+                "Verify the schema format is valid and the registry endpoint is configured".to_string()
+            }
             _ => "Check server logs for more details".to_string(),
         }
     }
@@ -282,27 +294,27 @@ mod tests {
     }
 
     #[test]
-    fn test_hint_produce_error_falls_through() {
+    fn test_hint_produce_error() {
         let err = StreamlineError::new(ErrorCode::ProduceError, "full", true);
-        assert!(err.hint().contains("server logs"));
+        assert!(err.hint().contains("topic exists"));
     }
 
     #[test]
-    fn test_hint_admin_error_falls_through() {
+    fn test_hint_admin_error() {
         let err = StreamlineError::new(ErrorCode::AdminError, "fail", false);
-        assert!(err.hint().contains("server logs"));
+        assert!(err.hint().contains("admin permissions"));
     }
 
     #[test]
-    fn test_hint_query_error_falls_through() {
+    fn test_hint_query_error() {
         let err = StreamlineError::new(ErrorCode::QueryError, "fail", false);
-        assert!(err.hint().contains("server logs"));
+        assert!(err.hint().contains("SQL syntax"));
     }
 
     #[test]
-    fn test_hint_schema_registry_error_falls_through() {
+    fn test_hint_schema_registry_error() {
         let err = StreamlineError::new(ErrorCode::SchemaRegistryError, "fail", false);
-        assert!(err.hint().contains("server logs"));
+        assert!(err.hint().contains("schema format"));
     }
 
     #[test]
