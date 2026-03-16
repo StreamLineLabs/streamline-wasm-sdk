@@ -50,3 +50,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Full `#[wasm_bindgen]` exports for JavaScript interop
 - npm package support (`@streamlinelabs/streamline-wasm-sdk`)
 - GitHub Actions CI with wasm-pack build and test
+- test: scaffold WASM runtime initialization conformance tests
