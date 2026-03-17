@@ -52,3 +52,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GitHub Actions CI with wasm-pack build and test
 - test: scaffold WASM runtime initialization conformance tests
 - test: add conformance test for WASM memory boundary limits
+- test: add edge case assertions for WASM stack overflow
