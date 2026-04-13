@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `moonshot` module — read-safe subset of the Streamline Moonshot HTTP API
+  exposed via `wasm_bindgen`:
+  - `SearchClient.search(topic, query, k)` (M2)
+  - `MemoryReadClient.recall(agent, query, k)` (M1)
+- Excluded by design: attestation signing, contract registration, branch
+  mutation, and `memory/remember`. These are admin/write/signing operations
+  that must not run in browser contexts; route through a server-side gateway.
+
+### Added
 - Typed error system (`error.rs`): `StreamlineError` and `ErrorCode` enums exported to JS via wasm_bindgen
 - Producer batching with configurable `batch_size`, auto-flush on threshold, and `flush()` method
 - `pending_count()` method on Producer for batch inspection

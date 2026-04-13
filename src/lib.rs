@@ -9,6 +9,7 @@ pub const SDK_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub mod admin;
 pub mod circuit_breaker;
 pub mod error;
+pub mod moonshot;
 mod protocol;
 pub mod schema_registry;
 pub mod telemetry;
@@ -19,6 +20,7 @@ use wasm_bindgen::prelude::*;
 pub use admin::{AdminClient, QueryClient};
 pub use circuit_breaker::{CircuitBreaker, CircuitState};
 pub use error::{ErrorCode, StreamlineError};
+pub use moonshot::{MemoryReadClient, SearchClient};
 pub use protocol::{AdminAction, BrowserMessage, BrowserResponse, TopicInfo};
 pub use schema_registry::{SchemaFormat, SchemaRegistryClient};
 pub use telemetry::{Telemetry, TelemetrySpan};
@@ -513,6 +515,61 @@ impl Consumer {
         self.conn.send(&msg.to_string())?;
         self.current_offset = offset;
         Ok(())
+    }
+
+    /// Search the consumer's topic using semantic search via the HTTP API.
+    ///
+    /// Sends a `POST /api/v1/topics/{topic}/search` to the Streamline HTTP
+    /// admin port. The `base_url` should point to the HTTP API
+    /// (e.g. `http://localhost:9094`).
+    pub async fn search(&self, base_url: &str, query: &str, k: u32) -> Result<JsValue, JsValue> {
+        if query.is_empty() {
+            return Err(JsValue::from_str("query is required"));
+        }
+        if k == 0 {
+            return Err(JsValue::from_str("k must be > 0"));
+        }
+
+        let body = serde_json::json!({ "query": query, "k": k });
+        let base = base_url.trim_end_matches('/');
+        let url = format!("{}/api/v1/topics/{}/search", base, self.topic);
+
+        let opts = web_sys::RequestInit::new();
+        opts.set_method("POST");
+        opts.set_mode(web_sys::RequestMode::Cors);
+        opts.set_body(&JsValue::from_str(&body.to_string()));
+
+        let request = web_sys::Request::new_with_str_and_init(&url, &opts)?;
+        request.headers().set("Accept", "application/json")?;
+        request.headers().set("Content-Type", "application/json")?;
+
+        let window = web_sys::window().ok_or_else(|| JsValue::from_str("no window"))?;
+        let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request)).await?;
+        let resp: web_sys::Response = resp_value.dyn_into()?;
+
+        if !resp.ok() {
+            return Err(JsValue::from_str(&format!(
+                "HTTP {}: {}",
+                resp.status(),
+                resp.status_text()
+            )));
+        }
+
+        let text = wasm_bindgen_futures::JsFuture::from(resp.text()?).await?;
+        let text_str = text
+            .as_string()
+            .ok_or_else(|| JsValue::from_str("response is not a string"))?;
+
+        #[derive(serde::Deserialize)]
+        struct SearchResponse {
+            #[serde(default)]
+            hits: Vec<moonshot::SearchHit>,
+        }
+
+        let parsed: SearchResponse = serde_json::from_str(&text_str)
+            .map_err(|e| JsValue::from_str(&format!("parse error: {e}")))?;
+        serde_wasm_bindgen::to_value(&parsed.hits)
+            .map_err(|e| JsValue::from_str(&e.to_string()))
     }
 }
 

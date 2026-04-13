@@ -6,6 +6,7 @@
 [![WASM](https://img.shields.io/badge/WASM-purple.svg)](https://webassembly.org/)
 [![npm](https://img.shields.io/npm/v/@streamlinelabs/streamline-wasm)](https://www.npmjs.com/package/@streamlinelabs/streamline-wasm)
 [![Docs](https://img.shields.io/badge/docs-streamlinelabs.dev-blue.svg)](https://streamlinelabs.dev/docs/sdks/wasm)
+[![crates.io](https://img.shields.io/crates/v/streamline-sdk.svg)](https://crates.io/crates/streamline-sdk)
 
 Browser-native WebAssembly SDK for the [Streamline](https://github.com/streamlinelabs/streamline) streaming platform. Stream messages directly from the browser using WebSocket — no server-side proxy required.
 
