@@ -29,6 +29,8 @@ pub enum ErrorCode {
     QueryError,
     /// A schema registry operation failed.
     SchemaRegistryError,
+    /// A configuration or validation error.
+    ConfigurationError,
     /// An unknown error occurred.
     Unknown,
 }
@@ -125,6 +127,15 @@ impl StreamlineError {
         .into()
     }
 
+    pub fn configuration(detail: &str) -> JsValue {
+        Self::new(
+            ErrorCode::ConfigurationError,
+            detail,
+            false,
+        )
+        .into()
+    }
+
     pub fn auth_failed(detail: &str) -> JsValue {
         Self::new(
             ErrorCode::AuthenticationFailed,
@@ -162,6 +173,9 @@ impl StreamlineError {
             }
             ErrorCode::SchemaRegistryError => {
                 "Verify the schema format is valid and the registry endpoint is configured".to_string()
+            }
+            ErrorCode::ConfigurationError => {
+                "Check the provided configuration values (e.g. topic names, parameters)".to_string()
             }
             _ => "Check server logs for more details".to_string(),
         }
@@ -318,6 +332,18 @@ mod tests {
     }
 
     #[test]
+    fn test_hint_configuration_error() {
+        let err = StreamlineError::new(ErrorCode::ConfigurationError, "bad topic", false);
+        assert!(err.hint().contains("configuration values"));
+    }
+
+    #[test]
+    fn test_configuration_error_not_retryable() {
+        let err = StreamlineError::new(ErrorCode::ConfigurationError, "bad", false);
+        assert!(!err.is_retryable());
+    }
+
+    #[test]
     fn test_all_error_codes_distinct() {
         let codes = [
             ErrorCode::NotConnected,
@@ -330,6 +356,7 @@ mod tests {
             ErrorCode::AdminError,
             ErrorCode::QueryError,
             ErrorCode::SchemaRegistryError,
+            ErrorCode::ConfigurationError,
             ErrorCode::Unknown,
         ];
         for i in 0..codes.len() {

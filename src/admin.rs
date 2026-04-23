@@ -31,6 +31,8 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{Request, RequestInit, RequestMode, Response};
 
+use crate::error::StreamlineError;
+
 /// Topic information returned by admin operations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AdminTopicInfo {
@@ -167,6 +169,8 @@ impl AdminClient {
 
     /// Create a topic with the given number of partitions.
     pub async fn create_topic(&self, name: &str, partitions: u32) -> Result<(), JsValue> {
+        crate::validation::validate_topic_name(name)
+            .map_err(|e| StreamlineError::configuration(&e))?;
         let url = format!("{}/api/topics", self.base_url);
         let body = serde_json::json!({
             "name": name,
@@ -178,6 +182,8 @@ impl AdminClient {
 
     /// Delete a topic by name.
     pub async fn delete_topic(&self, name: &str) -> Result<(), JsValue> {
+        crate::validation::validate_topic_name(name)
+            .map_err(|e| StreamlineError::configuration(&e))?;
         let url = format!("{}/api/topics/{}", self.base_url, encode(name));
         self.http_delete(&url).await?;
         Ok(())

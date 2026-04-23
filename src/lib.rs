@@ -13,6 +13,7 @@ pub mod moonshot;
 mod protocol;
 pub mod schema_registry;
 pub mod telemetry;
+pub mod validation;
 mod websocket;
 
 use wasm_bindgen::prelude::*;
@@ -24,6 +25,7 @@ pub use moonshot::{MemoryReadClient, SearchClient};
 pub use protocol::{AdminAction, BrowserMessage, BrowserResponse, TopicInfo};
 pub use schema_registry::{SchemaFormat, SchemaRegistryClient};
 pub use telemetry::{Telemetry, TelemetrySpan};
+pub use validation::validate_topic_name;
 pub use websocket::{ConnectionState, WsConnection};
 
 /// High-level Streamline client for browser environments.
@@ -62,6 +64,7 @@ impl StreamlineClient {
 
     /// Produce a message to the given topic.
     pub fn produce(&self, topic: &str, value: &str) -> Result<(), JsValue> {
+        validation::validate_topic_name(topic).map_err(|e| StreamlineError::configuration(&e))?;
         self.produce_with_key(topic, None, value)
     }
 
@@ -72,6 +75,7 @@ impl StreamlineClient {
         key: Option<String>,
         value: &str,
     ) -> Result<(), JsValue> {
+        validation::validate_topic_name(topic).map_err(|e| StreamlineError::configuration(&e))?;
         let msg = BrowserMessage::Produce {
             topic: topic.to_string(),
             key,
@@ -83,6 +87,7 @@ impl StreamlineClient {
     /// Subscribe to messages on a topic. The provided JS callback is invoked
     /// for every incoming message.
     pub fn subscribe(&mut self, topic: &str, callback: js_sys::Function) -> Result<(), JsValue> {
+        validation::validate_topic_name(topic).map_err(|e| StreamlineError::configuration(&e))?;
         self.conn.on_message = Some(callback);
         let msg = BrowserMessage::Subscribe {
             topic: topic.to_string(),
@@ -100,6 +105,7 @@ impl StreamlineClient {
 
     /// Request topic creation via admin message.
     pub fn create_topic(&self, name: &str, partitions: Option<u32>) -> Result<(), JsValue> {
+        validation::validate_topic_name(name).map_err(|e| StreamlineError::configuration(&e))?;
         let msg = BrowserMessage::Admin {
             action: AdminAction::CreateTopic {
                 name: name.to_string(),
@@ -111,6 +117,7 @@ impl StreamlineClient {
 
     /// Request topic deletion via admin message.
     pub fn delete_topic(&self, name: &str) -> Result<(), JsValue> {
+        validation::validate_topic_name(name).map_err(|e| StreamlineError::configuration(&e))?;
         let msg = BrowserMessage::Admin {
             action: AdminAction::DeleteTopic {
                 name: name.to_string(),
@@ -211,6 +218,7 @@ impl Producer {
         let t = topic
             .or_else(|| self.default_topic.clone())
             .ok_or_else(|| StreamlineError::produce_error("no topic specified"))?;
+        validation::validate_topic_name(&t).map_err(|e| StreamlineError::configuration(&e))?;
         let msg = BrowserMessage::Produce {
             topic: t,
             key: None,
@@ -234,6 +242,7 @@ impl Producer {
         let t = topic
             .or_else(|| self.default_topic.clone())
             .ok_or_else(|| StreamlineError::produce_error("no topic specified"))?;
+        validation::validate_topic_name(&t).map_err(|e| StreamlineError::configuration(&e))?;
         let msg = BrowserMessage::Produce {
             topic: t,
             key: Some(key.to_string()),
@@ -593,6 +602,7 @@ impl TopicAdmin {
     }
 
     pub fn create_topic(&self, name: &str, partitions: Option<u32>) -> Result<(), JsValue> {
+        validation::validate_topic_name(name).map_err(|e| StreamlineError::configuration(&e))?;
         let msg = BrowserMessage::Admin {
             action: AdminAction::CreateTopic {
                 name: name.to_string(),
@@ -603,6 +613,7 @@ impl TopicAdmin {
     }
 
     pub fn delete_topic(&self, name: &str) -> Result<(), JsValue> {
+        validation::validate_topic_name(name).map_err(|e| StreamlineError::configuration(&e))?;
         let msg = BrowserMessage::Admin {
             action: AdminAction::DeleteTopic {
                 name: name.to_string(),
