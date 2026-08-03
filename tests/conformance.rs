@@ -6,8 +6,7 @@
 use streamline_wasm_sdk::{
     AdminAction, AdminClient, BrowserMessage, BrowserResponse, CircuitBreaker, CircuitState,
     ConnectionState, Consumer, ErrorCode, Producer, QueryClient, SchemaFormat,
-    SchemaRegistryClient, StreamlineClient, StreamlineError, Telemetry, TopicAdmin, TopicInfo,
-    WsConnection,
+    SchemaRegistryClient, StreamlineClient, StreamlineError, Telemetry, TopicInfo,
 };
 
 // ========== PRODUCER (8 tests) ==========
@@ -144,7 +143,7 @@ fn test_c02_from_beginning() {
     let mut consumer = Consumer::new("ws://localhost:9094/ws", "events");
     assert_eq!(consumer.current_offset(), 0);
     // Advance to simulate receiving messages from beginning
-    consumer.advance_offset(0);
+    assert!(consumer.advance_offset(0).is_ok());
     assert_eq!(consumer.current_offset(), 1);
 }
 
@@ -152,9 +151,9 @@ fn test_c02_from_beginning() {
 fn test_c03_from_offset() {
     let mut consumer = Consumer::new("ws://localhost:9094/ws", "events");
     // Simulate receiving messages starting from offset 100
-    consumer.advance_offset(100);
+    assert!(consumer.advance_offset(100).is_ok());
     assert_eq!(consumer.current_offset(), 101);
-    consumer.advance_offset(101);
+    assert!(consumer.advance_offset(101).is_ok());
     assert_eq!(consumer.current_offset(), 102);
 }
 
@@ -233,7 +232,7 @@ fn test_g01_join_group() {
 #[test]
 fn test_g02_commit_offset() {
     let mut consumer = Consumer::new("ws://localhost:9094/ws", "events");
-    consumer.advance_offset(10);
+    assert!(consumer.advance_offset(10).is_ok());
     assert_eq!(consumer.current_offset(), 11);
     // commit_offset without connection will fail, but offset tracking works locally
     assert_eq!(consumer.committed_offset(), -1);
@@ -285,8 +284,8 @@ fn test_g07_independent_groups() {
     c2.set_group_id("group-b");
     assert_ne!(c1.group_id(), c2.group_id());
     // Independent offset tracking
-    c1.advance_offset(100);
-    c2.advance_offset(200);
+    assert!(c1.advance_offset(100).is_ok());
+    assert!(c2.advance_offset(200).is_ok());
     assert_eq!(c1.current_offset(), 101);
     assert_eq!(c2.current_offset(), 201);
 }
@@ -481,7 +480,7 @@ fn test_s04_compatibility_check() {
 fn test_s05_avro_format() {
     assert_eq!(SchemaFormat::Avro, SchemaFormat::Avro);
     let avro = SchemaFormat::Avro;
-    let cloned = avro.clone();
+    let cloned = avro;
     assert_eq!(avro, cloned);
 }
 

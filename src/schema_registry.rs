@@ -462,10 +462,7 @@ mod tests {
         assert!(!basic_json_validate(&string_schema, &serde_json::json!(42)));
 
         let number_schema: serde_json::Value = serde_json::json!({"type": "number"});
-        assert!(basic_json_validate(
-            &number_schema,
-            &serde_json::json!(3.14)
-        ));
+        assert!(basic_json_validate(&number_schema, &serde_json::json!(2.5)));
         assert!(!basic_json_validate(
             &number_schema,
             &serde_json::json!("text")
@@ -523,6 +520,8 @@ mod tests {
     // ── Additional coverage ──────────────────────────────────────────
 
     #[test]
+    // Intentionally exercises both the derived `Copy` and `Clone` impls.
+    #[allow(clippy::clone_on_copy)]
     fn test_schema_format_clone_copy() {
         let fmt = SchemaFormat::Protobuf;
         let copied = fmt;
@@ -560,7 +559,7 @@ mod tests {
     fn test_validate_json_integer_type() {
         let schema: serde_json::Value = serde_json::json!({"type": "integer"});
         assert!(basic_json_validate(&schema, &serde_json::json!(42)));
-        assert!(basic_json_validate(&schema, &serde_json::json!(3.14)));
+        assert!(basic_json_validate(&schema, &serde_json::json!(2.5)));
         assert!(!basic_json_validate(&schema, &serde_json::json!("text")));
     }
 

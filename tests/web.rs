@@ -39,10 +39,13 @@ fn producer_disconnect_on_fresh() {
 }
 
 #[wasm_bindgen_test]
-fn producer_send_without_connection_fails() {
+fn producer_send_without_connection_records_delivery_error() {
     let mut producer = Producer::new("ws://localhost:9094/ws", Some("topic".into()));
+    producer.set_batch_size(1);
     let result = producer.send("hello", None);
-    assert!(result.is_err());
+    assert!(result.is_ok());
+    assert_eq!(producer.total_sent(), 0);
+    assert_eq!(producer.total_errors(), 1);
 }
 
 #[wasm_bindgen_test]
@@ -53,10 +56,13 @@ fn producer_send_without_topic_or_default_fails() {
 }
 
 #[wasm_bindgen_test]
-fn producer_send_keyed_without_connection_fails() {
+fn producer_send_keyed_without_connection_records_delivery_error() {
     let mut producer = Producer::new("ws://localhost:9094/ws", Some("topic".into()));
+    producer.set_batch_size(1);
     let result = producer.send_keyed("key", "value", None);
-    assert!(result.is_err());
+    assert!(result.is_ok());
+    assert_eq!(producer.total_sent(), 0);
+    assert_eq!(producer.total_errors(), 1);
 }
 
 // ── Consumer construction ────────────────────────────────────────────

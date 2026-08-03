@@ -3,6 +3,13 @@
 //! Tests serialization edge cases, malformed inputs, and boundary conditions
 //! for the BrowserMessage and BrowserResponse types.
 
+// `#[wasm_bindgen_test]` does not expand to `#[test]`, so clippy's
+// test-detection doesn't recognize these functions as tests when this file
+// is type-checked on a non-wasm32 host (e.g. `cargo clippy --all-targets`).
+// This crate is exclusively integration tests, so `.unwrap()`/`.expect()`
+// here are covered by the same test-only allowance as `#[test]` functions.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use streamline_wasm_sdk::{AdminAction, BrowserMessage, BrowserResponse, TopicInfo};
 use wasm_bindgen_test::*;
 

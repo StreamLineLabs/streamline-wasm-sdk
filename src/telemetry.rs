@@ -193,6 +193,12 @@ impl Telemetry {
     }
 }
 
+impl Default for Telemetry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 // ── W3C Trace Context Support ────────────────────────────────────────
 
 /// Generate a W3C traceparent header value.

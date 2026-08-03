@@ -134,155 +134,6 @@ impl WsConnection {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn make_conn(attempts: u32, max: u32, auto: bool) -> WsConnection {
-        WsConnection {
-            url: "ws://localhost:9094/ws".into(),
-            ws: None,
-            state: ConnectionState::Disconnected,
-            reconnect_attempts: attempts,
-            max_reconnect_attempts: max,
-            auto_reconnect: auto,
-            intentional_disconnect: false,
-            on_message: None,
-            on_state_change: None,
-            on_reconnect_failed: None,
-        }
-    }
-
-    // ── ConnectionState ──────────────────────────────────────────────
-
-    #[test]
-    fn test_connection_state_equality() {
-        assert_eq!(ConnectionState::Disconnected, ConnectionState::Disconnected);
-        assert_eq!(ConnectionState::Connected, ConnectionState::Connected);
-        assert_ne!(ConnectionState::Connected, ConnectionState::Disconnected);
-    }
-
-    #[test]
-    fn test_connection_state_clone() {
-        let state = ConnectionState::Reconnecting;
-        let cloned = state;
-        assert_eq!(state, cloned);
-    }
-
-    #[test]
-    fn test_connection_state_debug() {
-        let dbg = format!("{:?}", ConnectionState::Connecting);
-        assert_eq!(dbg, "Connecting");
-    }
-
-    // ── reconnect_delay_ms ───────────────────────────────────────────
-
-    #[test]
-    fn test_reconnect_delay_initial() {
-        let conn = make_conn(0, 5, true);
-        assert_eq!(conn.reconnect_delay_ms(), 1_000);
-    }
-
-    #[test]
-    fn test_reconnect_delay_exponential_backoff() {
-        let delays: Vec<u32> = (0..5)
-            .map(|a| make_conn(a, 5, true).reconnect_delay_ms())
-            .collect();
-        assert_eq!(delays, vec![1_000, 2_000, 4_000, 8_000, 16_000]);
-    }
-
-    #[test]
-    fn test_reconnect_delay_capped_at_30s() {
-        let conn = make_conn(10, 5, true);
-        assert_eq!(conn.reconnect_delay_ms(), 30_000);
-    }
-
-    #[test]
-    fn test_reconnect_delay_large_attempts_no_overflow() {
-        let conn = make_conn(100, 5, true);
-        assert_eq!(conn.reconnect_delay_ms(), 30_000);
-    }
-
-    // ── WsConnection field defaults & auto-reconnect ─────────────────
-
-    #[test]
-    fn test_is_connected_when_disconnected() {
-        let conn = make_conn(0, 5, true);
-        assert!(!conn.is_connected());
-    }
-
-    #[test]
-    fn test_is_connected_when_connected() {
-        let mut conn = make_conn(0, 5, true);
-        conn.state = ConnectionState::Connected;
-        assert!(conn.is_connected());
-    }
-
-    #[test]
-    fn test_state_returns_current_state() {
-        let mut conn = make_conn(0, 5, true);
-        conn.state = ConnectionState::Reconnecting;
-        assert_eq!(conn.state(), ConnectionState::Reconnecting);
-    }
-
-    #[test]
-    fn test_set_max_reconnect_attempts() {
-        let mut conn = make_conn(0, 5, true);
-        conn.set_max_reconnect_attempts(10);
-        assert_eq!(conn.max_reconnect_attempts, 10);
-    }
-
-    #[test]
-    fn test_auto_reconnect_default_enabled() {
-        let conn = make_conn(0, 5, true);
-        assert!(conn.auto_reconnect());
-    }
-
-    #[test]
-    fn test_auto_reconnect_can_be_disabled() {
-        let mut conn = make_conn(0, 5, true);
-        conn.set_auto_reconnect(false);
-        assert!(!conn.auto_reconnect());
-    }
-
-    #[test]
-    fn test_should_reconnect_when_enabled_and_under_limit() {
-        let conn = make_conn(2, 5, true);
-        assert!(conn.should_reconnect());
-    }
-
-    #[test]
-    fn test_should_not_reconnect_when_disabled() {
-        let conn = make_conn(0, 5, false);
-        assert!(!conn.should_reconnect());
-    }
-
-    #[test]
-    fn test_should_not_reconnect_after_intentional_disconnect() {
-        let mut conn = make_conn(0, 5, true);
-        conn.intentional_disconnect = true;
-        assert!(!conn.should_reconnect());
-    }
-
-    #[test]
-    fn test_should_not_reconnect_when_max_attempts_reached() {
-        let conn = make_conn(5, 5, true);
-        assert!(!conn.should_reconnect());
-    }
-
-    #[test]
-    fn test_should_reconnect_unlimited_when_max_is_zero() {
-        let conn = make_conn(999, 0, true);
-        assert!(conn.should_reconnect());
-    }
-
-    #[test]
-    fn test_reconnect_attempts_getter() {
-        let conn = make_conn(3, 5, true);
-        assert_eq!(conn.reconnect_attempts(), 3);
-    }
-}
-
 // Internal helper methods (not exported to JS).
 impl WsConnection {
     /// Send a typed browser message (internal only — not exported to JS).
@@ -547,5 +398,154 @@ impl WsConnection {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_conn(attempts: u32, max: u32, auto: bool) -> WsConnection {
+        WsConnection {
+            url: "ws://localhost:9094/ws".into(),
+            ws: None,
+            state: ConnectionState::Disconnected,
+            reconnect_attempts: attempts,
+            max_reconnect_attempts: max,
+            auto_reconnect: auto,
+            intentional_disconnect: false,
+            on_message: None,
+            on_state_change: None,
+            on_reconnect_failed: None,
+        }
+    }
+
+    // ── ConnectionState ──────────────────────────────────────────────
+
+    #[test]
+    fn test_connection_state_equality() {
+        assert_eq!(ConnectionState::Disconnected, ConnectionState::Disconnected);
+        assert_eq!(ConnectionState::Connected, ConnectionState::Connected);
+        assert_ne!(ConnectionState::Connected, ConnectionState::Disconnected);
+    }
+
+    #[test]
+    fn test_connection_state_clone() {
+        let state = ConnectionState::Reconnecting;
+        let cloned = state;
+        assert_eq!(state, cloned);
+    }
+
+    #[test]
+    fn test_connection_state_debug() {
+        let dbg = format!("{:?}", ConnectionState::Connecting);
+        assert_eq!(dbg, "Connecting");
+    }
+
+    // ── reconnect_delay_ms ───────────────────────────────────────────
+
+    #[test]
+    fn test_reconnect_delay_initial() {
+        let conn = make_conn(0, 5, true);
+        assert_eq!(conn.reconnect_delay_ms(), 1_000);
+    }
+
+    #[test]
+    fn test_reconnect_delay_exponential_backoff() {
+        let delays: Vec<u32> = (0..5)
+            .map(|a| make_conn(a, 5, true).reconnect_delay_ms())
+            .collect();
+        assert_eq!(delays, vec![1_000, 2_000, 4_000, 8_000, 16_000]);
+    }
+
+    #[test]
+    fn test_reconnect_delay_capped_at_30s() {
+        let conn = make_conn(10, 5, true);
+        assert_eq!(conn.reconnect_delay_ms(), 30_000);
+    }
+
+    #[test]
+    fn test_reconnect_delay_large_attempts_no_overflow() {
+        let conn = make_conn(100, 5, true);
+        assert_eq!(conn.reconnect_delay_ms(), 30_000);
+    }
+
+    // ── WsConnection field defaults & auto-reconnect ─────────────────
+
+    #[test]
+    fn test_is_connected_when_disconnected() {
+        let conn = make_conn(0, 5, true);
+        assert!(!conn.is_connected());
+    }
+
+    #[test]
+    fn test_is_connected_when_connected() {
+        let mut conn = make_conn(0, 5, true);
+        conn.state = ConnectionState::Connected;
+        assert!(conn.is_connected());
+    }
+
+    #[test]
+    fn test_state_returns_current_state() {
+        let mut conn = make_conn(0, 5, true);
+        conn.state = ConnectionState::Reconnecting;
+        assert_eq!(conn.state(), ConnectionState::Reconnecting);
+    }
+
+    #[test]
+    fn test_set_max_reconnect_attempts() {
+        let mut conn = make_conn(0, 5, true);
+        conn.set_max_reconnect_attempts(10);
+        assert_eq!(conn.max_reconnect_attempts, 10);
+    }
+
+    #[test]
+    fn test_auto_reconnect_default_enabled() {
+        let conn = make_conn(0, 5, true);
+        assert!(conn.auto_reconnect());
+    }
+
+    #[test]
+    fn test_auto_reconnect_can_be_disabled() {
+        let mut conn = make_conn(0, 5, true);
+        conn.set_auto_reconnect(false);
+        assert!(!conn.auto_reconnect());
+    }
+
+    #[test]
+    fn test_should_reconnect_when_enabled_and_under_limit() {
+        let conn = make_conn(2, 5, true);
+        assert!(conn.should_reconnect());
+    }
+
+    #[test]
+    fn test_should_not_reconnect_when_disabled() {
+        let conn = make_conn(0, 5, false);
+        assert!(!conn.should_reconnect());
+    }
+
+    #[test]
+    fn test_should_not_reconnect_after_intentional_disconnect() {
+        let mut conn = make_conn(0, 5, true);
+        conn.intentional_disconnect = true;
+        assert!(!conn.should_reconnect());
+    }
+
+    #[test]
+    fn test_should_not_reconnect_when_max_attempts_reached() {
+        let conn = make_conn(5, 5, true);
+        assert!(!conn.should_reconnect());
+    }
+
+    #[test]
+    fn test_should_reconnect_unlimited_when_max_is_zero() {
+        let conn = make_conn(999, 0, true);
+        assert!(conn.should_reconnect());
+    }
+
+    #[test]
+    fn test_reconnect_attempts_getter() {
+        let conn = make_conn(3, 5, true);
+        assert_eq!(conn.reconnect_attempts(), 3);
     }
 }

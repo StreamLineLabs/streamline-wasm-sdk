@@ -141,14 +141,14 @@ fn test_consumer_offset_tracking() {
     assert_eq!(consumer.committed_offset(), -1);
 
     // Advance the offset as if messages arrived
-    consumer.advance_offset(0);
+    assert!(consumer.advance_offset(0).is_ok());
     assert_eq!(consumer.current_offset(), 1); // offset + 1
 
-    consumer.advance_offset(4);
+    assert!(consumer.advance_offset(4).is_ok());
     assert_eq!(consumer.current_offset(), 5);
 
     // Advancing to an earlier offset is a no-op
-    consumer.advance_offset(2);
+    assert!(consumer.advance_offset(2).is_ok());
     assert_eq!(consumer.current_offset(), 5);
 }
 

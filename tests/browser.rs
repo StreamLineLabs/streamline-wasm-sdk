@@ -2,6 +2,13 @@
 //!
 //! Run with: `wasm-pack test --headless --chrome`
 
+// `#[wasm_bindgen_test]` does not expand to `#[test]`, so clippy's
+// test-detection doesn't recognize these functions as tests when this file
+// is type-checked on a non-wasm32 host (e.g. `cargo clippy --all-targets`).
+// This crate is exclusively integration tests, so `.unwrap()`/`.expect()`
+// here are covered by the same test-only allowance as `#[test]` functions.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use wasm_bindgen_test::*;
 
 wasm_bindgen_test_configure!(run_in_browser);
@@ -484,22 +491,22 @@ fn consumer_initial_offset_is_zero() {
 #[wasm_bindgen_test]
 fn consumer_advance_offset() {
     let mut consumer = streamline_wasm_sdk::Consumer::new("ws://localhost:9094/ws", "test-topic");
-    consumer.advance_offset(5);
+    assert!(consumer.advance_offset(5).is_ok());
     assert_eq!(consumer.current_offset(), 6); // offset + 1
 
     // Advancing to a lower offset should be ignored
-    consumer.advance_offset(3);
+    assert!(consumer.advance_offset(3).is_ok());
     assert_eq!(consumer.current_offset(), 6);
 }
 
 #[wasm_bindgen_test]
 fn consumer_advance_offset_sequential() {
     let mut consumer = streamline_wasm_sdk::Consumer::new("ws://localhost:9094/ws", "events");
-    consumer.advance_offset(0);
+    assert!(consumer.advance_offset(0).is_ok());
     assert_eq!(consumer.current_offset(), 1);
-    consumer.advance_offset(1);
+    assert!(consumer.advance_offset(1).is_ok());
     assert_eq!(consumer.current_offset(), 2);
-    consumer.advance_offset(2);
+    assert!(consumer.advance_offset(2).is_ok());
     assert_eq!(consumer.current_offset(), 3);
 }
 
