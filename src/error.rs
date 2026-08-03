@@ -128,12 +128,7 @@ impl StreamlineError {
     }
 
     pub fn configuration(detail: &str) -> JsValue {
-        Self::new(
-            ErrorCode::ConfigurationError,
-            detail,
-            false,
-        )
-        .into()
+        Self::new(ErrorCode::ConfigurationError, detail, false).into()
     }
 
     pub fn auth_failed(detail: &str) -> JsValue {

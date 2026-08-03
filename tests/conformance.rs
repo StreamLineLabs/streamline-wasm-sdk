@@ -161,7 +161,8 @@ fn test_c03_from_offset() {
 #[test]
 fn test_c04_from_timestamp() {
     // Verify message response parsing with timestamp
-    let json = r#"{"type":"message","topic":"events","value":"v","offset":42,"timestamp":1700000000000}"#;
+    let json =
+        r#"{"type":"message","topic":"events","value":"v","offset":42,"timestamp":1700000000000}"#;
     let resp = BrowserResponse::from_json(json).unwrap();
     match resp {
         BrowserResponse::Message {
@@ -369,8 +370,7 @@ fn test_d05_auto_create_topic() {
     assert_eq!(parsed["action"]["name"], "auto-created");
     // partitions field should be absent when None
     assert!(
-        parsed["action"].get("partitions").is_none()
-            || parsed["action"]["partitions"].is_null()
+        parsed["action"].get("partitions").is_none() || parsed["action"]["partitions"].is_null()
     );
 }
 
@@ -493,9 +493,7 @@ fn test_s06_json_format() {
     assert!(client
         .validate_json(schema, r#"{"name":"Alice","age":30}"#)
         .unwrap());
-    assert!(!client
-        .validate_json(schema, r#"{"name":"Alice"}"#)
-        .unwrap());
+    assert!(!client.validate_json(schema, r#"{"name":"Alice"}"#).unwrap());
 }
 
 // ========== ERROR HANDLING (5 tests) ==========

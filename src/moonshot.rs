@@ -181,7 +181,8 @@ mod tests {
 
     #[test]
     fn search_response_parses() {
-        let json = r#"{"hits":[{"topic":"t","partition":0,"offset":7,"score":0.9,"snippet":"hi"}]}"#;
+        let json =
+            r#"{"hits":[{"topic":"t","partition":0,"offset":7,"score":0.9,"snippet":"hi"}]}"#;
         let r: SearchResponse = serde_json::from_str(json).unwrap();
         assert_eq!(r.hits.len(), 1);
         assert_eq!(r.hits[0].topic, "t");

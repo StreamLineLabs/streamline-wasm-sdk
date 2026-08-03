@@ -123,7 +123,6 @@ fn multiple_producers_coexist() {
     let _p2 = Producer::new("ws://localhost:9094/ws", Some("topic-b".into()));
 }
 
-
 #[wasm_bindgen_test]
 async fn test_message_throughput() {
     // Verify we can create and serialize many messages quickly
@@ -132,5 +131,8 @@ async fn test_message_throughput() {
         let _msg = format!("benchmark-message-{}", i);
     }
     let elapsed = js_sys::Date::now() - start;
-    assert!(elapsed < 100.0, "1000 messages should complete in under 100ms");
+    assert!(
+        elapsed < 100.0,
+        "1000 messages should complete in under 100ms"
+    );
 }

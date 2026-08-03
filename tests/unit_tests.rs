@@ -9,8 +9,8 @@
 use streamline_wasm_sdk::{
     AdminAction, AdminClient, BrowserMessage, BrowserResponse, CircuitBreaker, CircuitState,
     ConnectionState, Consumer, ErrorCode, Producer, QueryClient, SchemaFormat,
-    SchemaRegistryClient, StreamlineClient, StreamlineError, Telemetry, TopicAdmin,
-    TopicInfo, WsConnection,
+    SchemaRegistryClient, StreamlineClient, StreamlineError, Telemetry, TopicAdmin, TopicInfo,
+    WsConnection,
 };
 
 // ── StreamlineClient construction ────────────────────────────────────
@@ -341,7 +341,10 @@ fn sdk_version_is_semver() {
     let parts: Vec<&str> = streamline_wasm_sdk::SDK_VERSION.split('.').collect();
     assert_eq!(parts.len(), 3, "Version should be semver (x.y.z)");
     for part in parts {
-        assert!(part.parse::<u32>().is_ok(), "Each version part should be numeric");
+        assert!(
+            part.parse::<u32>().is_ok(),
+            "Each version part should be numeric"
+        );
     }
 }
 
@@ -560,7 +563,9 @@ fn schema_registry_validate_json_happy_path() {
 #[test]
 fn schema_registry_validate_json_string_type() {
     let client = SchemaRegistryClient::new("http://localhost:9094");
-    assert!(client.validate_json(r#"{"type":"string"}"#, r#""hello""#).unwrap());
+    assert!(client
+        .validate_json(r#"{"type":"string"}"#, r#""hello""#)
+        .unwrap());
 }
 
 #[test]
@@ -572,13 +577,17 @@ fn schema_registry_validate_json_number_type() {
 #[test]
 fn schema_registry_validate_json_boolean_type() {
     let client = SchemaRegistryClient::new("http://localhost:9094");
-    assert!(client.validate_json(r#"{"type":"boolean"}"#, "true").unwrap());
+    assert!(client
+        .validate_json(r#"{"type":"boolean"}"#, "true")
+        .unwrap());
 }
 
 #[test]
 fn schema_registry_validate_json_array_type() {
     let client = SchemaRegistryClient::new("http://localhost:9094");
-    assert!(client.validate_json(r#"{"type":"array"}"#, "[1,2,3]").unwrap());
+    assert!(client
+        .validate_json(r#"{"type":"array"}"#, "[1,2,3]")
+        .unwrap());
 }
 
 #[test]
@@ -608,6 +617,8 @@ mod schema_registry_error_paths {
     #[test]
     fn validate_json_invalid_value() {
         let client = SchemaRegistryClient::new("http://localhost:9094");
-        assert!(client.validate_json(r#"{"type":"object"}"#, "not json").is_err());
+        assert!(client
+            .validate_json(r#"{"type":"object"}"#, "not json")
+            .is_err());
     }
 }

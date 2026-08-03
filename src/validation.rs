@@ -19,10 +19,7 @@ pub fn validate_topic_name(topic: &str) -> Result<(), String> {
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-')
     {
-        return Err(format!(
-            "Topic name contains invalid characters: {}",
-            topic
-        ));
+        return Err(format!("Topic name contains invalid characters: {}", topic));
     }
     Ok(())
 }

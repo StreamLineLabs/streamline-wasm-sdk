@@ -272,11 +272,7 @@ impl Producer {
         self.error_count += errors;
 
         if let Some(ref cb) = self.on_delivery {
-            let _ = cb.call2(
-                &JsValue::NULL,
-                &JsValue::from(sent),
-                &JsValue::from(errors),
-            );
+            let _ = cb.call2(&JsValue::NULL, &JsValue::from(sent), &JsValue::from(errors));
         }
         Ok(())
     }
@@ -310,11 +306,17 @@ impl Producer {
     }
 
     /// Buffer a message in the current transaction.
-    pub fn send_transactional(&mut self, value: &str, topic: &str, key: Option<String>) -> Result<(), JsValue> {
+    pub fn send_transactional(
+        &mut self,
+        value: &str,
+        topic: &str,
+        key: Option<String>,
+    ) -> Result<(), JsValue> {
         if !self.in_transaction {
             return Err(JsValue::from_str("No transaction in progress"));
         }
-        self.transaction_buffer.push((value.to_string(), key, topic.to_string()));
+        self.transaction_buffer
+            .push((value.to_string(), key, topic.to_string()));
         Ok(())
     }
 
@@ -454,7 +456,10 @@ impl Consumer {
         }
         self.uncommitted_count += 1;
 
-        if self.auto_commit && self.auto_commit_count > 0 && self.uncommitted_count >= self.auto_commit_count {
+        if self.auto_commit
+            && self.auto_commit_count > 0
+            && self.uncommitted_count >= self.auto_commit_count
+        {
             self.commit()?;
         }
         Ok(())
@@ -553,7 +558,8 @@ impl Consumer {
         request.headers().set("Content-Type", "application/json")?;
 
         let window = web_sys::window().ok_or_else(|| JsValue::from_str("no window"))?;
-        let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request)).await?;
+        let resp_value =
+            wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request)).await?;
         let resp: web_sys::Response = resp_value.dyn_into()?;
 
         if !resp.ok() {
@@ -577,8 +583,7 @@ impl Consumer {
 
         let parsed: SearchResponse = serde_json::from_str(&text_str)
             .map_err(|e| JsValue::from_str(&format!("parse error: {e}")))?;
-        serde_wasm_bindgen::to_value(&parsed.hits)
-            .map_err(|e| JsValue::from_str(&e.to_string()))
+        serde_wasm_bindgen::to_value(&parsed.hits).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 }
 
