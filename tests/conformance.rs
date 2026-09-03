@@ -248,8 +248,11 @@ fn test_g03_fetch_committed_offset() {
 #[test]
 fn test_g04_auto_commit() {
     let mut consumer = Consumer::new("ws://localhost:9094/ws", "events");
-    consumer.set_auto_commit(5);
-    // Advance offset 4 times — should NOT trigger auto-commit
+    // Native tests cannot materialize JsValue errors; the headless-browser
+    // regression suite verifies that non-zero auto-commit is rejected with
+    // ErrorCode::Unsupported. The disabled state remains accepted here.
+    assert!(consumer.set_auto_commit(0).is_ok());
+    // Local delivery tracking remains independent of offset commit.
     for i in 0..4 {
         let _ = consumer.advance_offset(i);
     }
