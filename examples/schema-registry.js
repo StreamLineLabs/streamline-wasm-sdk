@@ -4,8 +4,25 @@
 // The WASM SDK includes a SchemaRegistryClient for schema validation.
 //
 // Usage:
-//   1. Start Streamline: docker run -p 9092:9092 -p 9094:9094 ghcr.io/streamlinelabs/streamline:0.2.0
+//   1. Start a compatible fixture: docker run -p 9092:9092 -p 9094:9094 "$STREAMLINE_FIXTURE_IMAGE"
 //   2. Include in a bundler or HTML page with the WASM SDK loaded.
+
+function connectAndWait(client) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('Connection timed out')), 10000);
+    client.on_state_change((state) => {
+      if (state === 'Connected') {
+        clearTimeout(timeout);
+        resolve();
+      }
+    });
+    client.on_reconnect_failed((message) => {
+      clearTimeout(timeout);
+      reject(new Error(message));
+    });
+    client.connect();
+  });
+}
 
 async function main() {
   const wasm = await import('@streamlinelabs/streamline-wasm');
@@ -68,12 +85,13 @@ async function main() {
 
   // Produce validated messages
   console.log('\n--- Produce Validated Messages ---');
-  const client = new wasm.StreamlineClient('ws://localhost:9094/ws');
-  await client.connect();
-
+  const admin = new wasm.AdminClient(httpUrl);
   try {
-    await client.create_topic('user-events', 1);
+    await admin.create_topic('user-events', 1);
   } catch (e) { /* topic may exist */ }
+
+  const client = new wasm.StreamlineClient('ws://localhost:9094/ws');
+  await connectAndWait(client);
 
   const users = [
     { id: 1, name: 'Alice', email: 'alice@example.com' },

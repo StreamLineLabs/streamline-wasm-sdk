@@ -11,7 +11,8 @@ Start Streamline:
 
 ```bash
 # Via Docker
-docker run -p 9092:9092 -p 9094:9094 ghcr.io/streamlinelabs/streamline:0.2.0 --playground
+STREAMLINE_FIXTURE_IMAGE=registry.example/streamline:test
+docker run -p 9092:9092 -p 9094:9094 "$STREAMLINE_FIXTURE_IMAGE" --playground
 
 # Or via Homebrew
 streamline --playground

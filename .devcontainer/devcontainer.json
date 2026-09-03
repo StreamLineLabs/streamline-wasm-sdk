@@ -25,7 +25,7 @@
     }
   },
 
-  "postCreateCommand": "cargo build && curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh",
+  "postCreateCommand": "cargo build && cargo install wasm-pack --version 0.13.1 --locked",
 
   "forwardPorts": [9092],
   "portsAttributes": {

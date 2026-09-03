@@ -373,11 +373,8 @@ fn basic_json_validate(schema: &serde_json::Value, value: &serde_json::Value) ->
                     return false;
                 }
             }
-            "null" => {
-                if !value.is_null() {
-                    return false;
-                }
-            }
+            "null" if !value.is_null() => return false,
+            "null" => {}
             _ => {}
         }
     }

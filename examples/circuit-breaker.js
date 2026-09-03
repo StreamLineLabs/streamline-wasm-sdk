@@ -4,7 +4,7 @@
 // to handle intermittent connectivity in browser environments.
 //
 // Usage:
-//   1. Start Streamline: docker run -p 9092:9092 -p 9094:9094 ghcr.io/streamlinelabs/streamline:0.2.0
+//   1. Start a compatible fixture: docker run -p 9092:9092 -p 9094:9094 "$STREAMLINE_FIXTURE_IMAGE"
 //   2. Include in a bundler or HTML page with the WASM SDK loaded.
 
 // Simple circuit breaker implementation for browser environments
@@ -61,6 +61,23 @@ class CircuitBreaker {
   }
 }
 
+function connectAndWait(client) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('Connection timed out')), 10000);
+    client.on_state_change((state) => {
+      if (state === 'Connected') {
+        clearTimeout(timeout);
+        resolve();
+      }
+    });
+    client.on_reconnect_failed((message) => {
+      clearTimeout(timeout);
+      reject(new Error(message));
+    });
+    client.connect();
+  });
+}
+
 async function main() {
   const wasm = await import('@streamlinelabs/streamline-wasm');
   await wasm.default();
@@ -74,12 +91,13 @@ async function main() {
     successThreshold: 2,
   });
 
-  await client.connect();
+  await connectAndWait(client);
   console.log(`✅ Connected. Circuit: ${breaker.state}`);
 
   // Create topic
+  const admin = new wasm.AdminClient('http://localhost:9094');
   try {
-    await client.create_topic('cb-demo', 1);
+    await admin.create_topic('cb-demo', 1);
   } catch (e) { /* topic may exist */ }
 
   // Send messages through the circuit breaker

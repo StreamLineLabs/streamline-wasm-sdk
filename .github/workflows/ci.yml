@@ -20,6 +20,8 @@ jobs:
           targets: wasm32-unknown-unknown
       - run: cargo fmt --all -- --check
       - run: cargo clippy --all-targets -- -D warnings
+      - name: Clippy (wasm32 target — required for #[cfg(target_arch = "wasm32")] code)
+        run: cargo clippy --all-targets --target wasm32-unknown-unknown -- -D warnings
 
   test:
     name: Unit Tests
@@ -41,7 +43,9 @@ jobs:
           toolchain: "1.80"
           targets: wasm32-unknown-unknown
       - name: Install wasm-pack
-        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack@0.13.1
       - name: Build WASM (web target)
         run: wasm-pack build --target web --release
       - name: Build WASM (bundler target)
@@ -59,26 +63,27 @@ jobs:
           toolchain: "1.80"
           targets: wasm32-unknown-unknown
       - name: Install wasm-pack
-        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack@0.13.1
+      - name: Install Chrome
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
       - name: Run WASM tests (headless Chrome)
         run: wasm-pack test --headless --chrome
 
-  browser-tests:
-    name: Browser Integration Tests
+  security:
+    name: Dependency Policy
     runs-on: ubuntu-latest
-    needs: test
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.80"
-          targets: wasm32-unknown-unknown
-      - name: Install wasm-pack
-        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-      - name: Install Chrome
-        uses: browser-actions/setup-chrome@v1
+      - name: Audit Rust dependencies
+        uses: rustsec/audit-check@v2.0.0
         with:
-          chrome-version: stable
-      - name: Run browser integration tests (headless Chrome)
-        run: wasm-pack test --headless --chrome
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Enforce dependency policy
+        uses: EmbarkStudios/cargo-deny-action@v2
