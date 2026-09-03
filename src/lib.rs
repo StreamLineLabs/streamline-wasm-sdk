@@ -203,7 +203,9 @@ impl Producer {
     }
 
     /// Register a callback invoked after each flush with delivery status.
-    /// The callback receives `(sent_count: number, error_count: number)`.
+    /// The callback receives `(sent_this_call: number, failed_attempts: number)`.
+    /// Records left in the backlog but not attempted are reported separately
+    /// by `pending_count()`.
     pub fn on_delivery(&mut self, callback: js_sys::Function) {
         self.on_delivery = Some(callback);
     }
@@ -256,25 +258,55 @@ impl Producer {
         Ok(())
     }
 
-    /// Flush all pending messages in the batch.
-    /// Invokes the on_delivery callback (if set) with delivery status.
+    /// Flush all pending messages in the batch, in order.
+    ///
+    /// On the first send failure, flushing stops immediately: the failed
+    /// message and every message after it (never attempted this call) are
+    /// preserved in `self.batch`, in their original order, so a transport
+    /// error never silently drops records. Messages that were already sent
+    /// successfully before the failure are *not* re-queued, so a retried
+    /// `flush()` never re-sends (and thus never duplicates) them. The
+    /// underlying transport error is returned so callers can observe and
+    /// react to the failure instead of it being swallowed.
+    ///
+    /// Invokes the on_delivery callback (if set) with `(sent_this_call,
+    /// failed_attempts)` counts before returning. Use `pending_count()` to
+    /// inspect the retained backlog.
     pub fn flush(&mut self) -> Result<(), JsValue> {
-        let messages = std::mem::take(&mut self.batch);
-        let mut sent = 0u32;
-        let mut errors = 0u32;
-        for msg in messages {
-            match self.conn.send_message(&msg) {
+        let mut sent = 0usize;
+        let mut first_error: Option<JsValue> = None;
+
+        for msg in &self.batch {
+            match self.conn.send_message(msg) {
                 Ok(()) => sent += 1,
-                Err(_) => errors += 1,
+                Err(err) => {
+                    first_error = Some(err);
+                    break;
+                }
             }
         }
-        self.sent_count += sent;
-        self.error_count += errors;
+
+        // Drop only the successfully-sent prefix. The failed message (if
+        // any) and every unattempted message after it remain in the batch,
+        // in original order, ready for a subsequent flush() retry.
+        self.batch.drain(0..sent);
+
+        self.sent_count += sent as u32;
+        let failed_attempts = u32::from(first_error.is_some());
+        self.error_count += failed_attempts;
 
         if let Some(ref cb) = self.on_delivery {
-            let _ = cb.call2(&JsValue::NULL, &JsValue::from(sent), &JsValue::from(errors));
+            let _ = cb.call2(
+                &JsValue::NULL,
+                &JsValue::from(sent as u32),
+                &JsValue::from(failed_attempts),
+            );
         }
-        Ok(())
+
+        match first_error {
+            Some(err) => Err(err),
+            None => Ok(()),
+        }
     }
 
     /// Returns the number of messages waiting in the batch.
@@ -350,9 +382,17 @@ impl Producer {
     }
 
     /// Disconnect the producer, flushing pending messages first.
-    pub fn disconnect(&mut self) {
-        let _ = self.flush();
+    ///
+    /// The socket is always closed, even if the final flush fails — this is
+    /// an intentional disconnect and the transport is going away regardless.
+    /// However a failed flush is never swallowed: any records that could not
+    /// be sent remain in the batch (inspect via `pending_count()`) and the
+    /// underlying transport error is returned so the caller learns the
+    /// disconnect did not silently claim success for undelivered records.
+    pub fn disconnect(&mut self) -> Result<(), JsValue> {
+        let flush_result = self.flush();
         self.conn.disconnect();
+        flush_result
     }
 }
 

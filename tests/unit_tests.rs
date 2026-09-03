@@ -97,7 +97,8 @@ fn producer_flush_empty_batch_succeeds() {
 #[test]
 fn producer_disconnect_on_fresh() {
     let mut producer = Producer::new("ws://localhost:9094/ws", None);
-    producer.disconnect();
+    // Nothing pending, so the flush-then-disconnect succeeds cleanly.
+    assert!(producer.disconnect().is_ok());
     assert_eq!(producer.pending_count(), 0);
 }
 
