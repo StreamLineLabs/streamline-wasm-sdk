@@ -47,6 +47,7 @@ struct WsConnectionInner {
     state: ConnectionState,
     reconnect_attempts: u32,
     max_reconnect_attempts: u32,
+    reconnect_timer_id: Option<i32>,
     auto_reconnect: bool,
     intentional_disconnect: bool,
     persistent_messages: Vec<(String, String)>,
@@ -74,6 +75,7 @@ impl WsConnection {
                 state: ConnectionState::Disconnected,
                 reconnect_attempts: 0,
                 max_reconnect_attempts: 5,
+                reconnect_timer_id: None,
                 auto_reconnect: true,
                 intentional_disconnect: false,
                 persistent_messages: Vec::new(),
@@ -87,7 +89,17 @@ impl WsConnection {
 
     /// Enable or disable automatic reconnection (default: enabled).
     pub fn set_auto_reconnect(&mut self, enabled: bool) {
-        self.inner.borrow_mut().auto_reconnect = enabled;
+        let was_reconnecting = {
+            let mut inner = self.inner.borrow_mut();
+            inner.auto_reconnect = enabled;
+            inner.state == ConnectionState::Reconnecting
+        };
+        if !enabled {
+            Self::cancel_reconnect_timer(&self.inner);
+            if was_reconnecting {
+                Self::set_state(&self.inner, ConnectionState::Disconnected);
+            }
+        }
     }
 
     /// Returns `true` when automatic reconnection is enabled.
@@ -114,6 +126,7 @@ impl WsConnection {
 
     /// Connect to the Streamline server.
     pub fn connect(&mut self) -> Result<(), JsValue> {
+        Self::cancel_reconnect_timer(&self.inner);
         {
             let mut inner = self.inner.borrow_mut();
             if inner.ws.as_ref().is_some_and(|ws| {
@@ -149,6 +162,7 @@ impl WsConnection {
     /// Disconnect from the server. This is intentional and will **not**
     /// trigger automatic reconnection.
     pub fn disconnect(&mut self) {
+        Self::cancel_reconnect_timer(&self.inner);
         let ws = {
             let mut inner = self.inner.borrow_mut();
             inner.intentional_disconnect = true;
@@ -318,6 +332,18 @@ impl WsConnection {
         }
     }
 
+    fn cancel_reconnect_timer(shared: &Rc<RefCell<WsConnectionInner>>) {
+        let timer_id = shared.borrow_mut().reconnect_timer_id.take();
+        #[cfg(target_arch = "wasm32")]
+        if let Some(timer_id) = timer_id {
+            if let Some(window) = web_sys::window() {
+                window.clear_timeout_with_handle(timer_id);
+            }
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        let _ = timer_id;
+    }
+
     fn setup_event_handlers(shared: &Rc<RefCell<WsConnectionInner>>, ws: &WebSocket) {
         // ── onopen ────────────────────────────────────────────────
         {
@@ -475,15 +501,20 @@ impl WsConnection {
     }
 
     fn schedule_reconnect(shared: &Rc<RefCell<WsConnectionInner>>) {
-        let (current_attempts, max_attempts, auto_reconnect, intentional_disconnect) = {
+        let (current_attempts, max_attempts, auto_reconnect, intentional_disconnect, timer_pending) = {
             let inner = shared.borrow();
             (
                 inner.reconnect_attempts,
                 inner.max_reconnect_attempts,
                 inner.auto_reconnect,
                 inner.intentional_disconnect,
+                inner.reconnect_timer_id.is_some(),
             )
         };
+
+        if timer_pending {
+            return;
+        }
 
         if !auto_reconnect || intentional_disconnect {
             Self::set_state(shared, ConnectionState::Disconnected);
@@ -531,6 +562,7 @@ impl WsConnection {
             let Some(shared) = weak.upgrade() else {
                 return;
             };
+            shared.borrow_mut().reconnect_timer_id = None;
             let (url, should_continue, should_mark_disconnected) = {
                 let inner = shared.borrow();
                 let waiting_to_reconnect =
@@ -571,7 +603,10 @@ impl WsConnection {
             reconnect.as_ref().unchecked_ref(),
             delay_ms as i32,
         ) {
-            Ok(_) => reconnect.forget(),
+            Ok(timer_id) => {
+                shared.borrow_mut().reconnect_timer_id = Some(timer_id);
+                reconnect.forget();
+            }
             Err(error) => {
                 web_sys::console::error_1(
                     &format!(

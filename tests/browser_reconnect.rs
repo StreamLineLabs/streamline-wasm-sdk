@@ -16,12 +16,16 @@ fn install_mock_websocket() -> bool {
         r#"
         const originalWebSocket = globalThis.WebSocket;
         const originalSetTimeout = globalThis.setTimeout;
+        const originalClearTimeout = globalThis.clearTimeout;
         const state = {
             originalWebSocket,
             originalSetTimeout,
+            originalClearTimeout,
             instances: [],
             messages: [],
             states: [],
+            timeoutIds: new Set(),
+            holdTimeouts: false,
         };
 
         class MockWebSocket {
@@ -74,8 +78,19 @@ fn install_mock_websocket() -> bool {
 
         globalThis.__streamlineMock = state;
         globalThis.WebSocket = MockWebSocket;
-        globalThis.setTimeout = (callback, _delay, ...args) =>
-            originalSetTimeout(callback, 0, ...args);
+        globalThis.setTimeout = (callback, _delay, ...args) => {
+            let timeoutId;
+            timeoutId = originalSetTimeout(() => {
+                state.timeoutIds.delete(timeoutId);
+                callback(...args);
+            }, state.holdTimeouts ? 60_000 : 0);
+            state.timeoutIds.add(timeoutId);
+            return timeoutId;
+        };
+        globalThis.clearTimeout = (timeoutId) => {
+            state.timeoutIds.delete(timeoutId);
+            originalClearTimeout(timeoutId);
+        };
         return true;
         "#,
     )
@@ -90,8 +105,13 @@ fn restore_mock_websocket() {
         r#"
         const state = globalThis.__streamlineMock;
         if (state) {
+            for (const timeoutId of state.timeoutIds) {
+                state.originalClearTimeout(timeoutId);
+            }
+            state.timeoutIds.clear();
             globalThis.WebSocket = state.originalWebSocket;
             globalThis.setTimeout = state.originalSetTimeout;
+            globalThis.clearTimeout = state.originalClearTimeout;
             delete globalThis.__streamlineMock;
         }
         "#,
@@ -133,6 +153,12 @@ async fn drain_mock_tasks() {
         if let Some(promise) = promise {
             let _ = JsFuture::from(promise).await;
         }
+    }
+}
+
+async fn drain_microtasks() {
+    for _ in 0..4 {
+        let _ = JsFuture::from(js_sys::Promise::resolve(&wasm_bindgen::JsValue::UNDEFINED)).await;
     }
 }
 
@@ -314,6 +340,37 @@ fn test_disconnect_resets_reconnect_state() {
 
     // After disconnect, reconnect_attempts should be reset to 0
     assert_eq!(conn.reconnect_attempts(), 0);
+    assert_eq!(conn.state(), ConnectionState::Disconnected);
+}
+
+#[wasm_bindgen_test(async)]
+async fn test_disconnect_cancels_pending_reconnect_timer() {
+    let mock_installed = install_mock_websocket();
+
+    let mut conn = WsConnection::new("ws://mock.test/ws");
+    let connect_ok = conn.connect().is_ok();
+    drain_mock_tasks().await;
+
+    let _ = run_mock_script("globalThis.__streamlineMock.holdTimeouts = true;");
+    let _ = run_mock_script("globalThis.__streamlineMock.instances[0].fail();");
+    drain_microtasks().await;
+
+    let reconnect_was_pending =
+        run_mock_script("return globalThis.__streamlineMock.timeoutIds.size === 1;")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false);
+
+    conn.disconnect();
+    let reconnect_was_cancelled =
+        run_mock_script("return globalThis.__streamlineMock.timeoutIds.size === 0;")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false);
+    restore_mock_websocket();
+
+    assert!(mock_installed);
+    assert!(connect_ok);
+    assert!(reconnect_was_pending);
+    assert!(reconnect_was_cancelled);
     assert_eq!(conn.state(), ConnectionState::Disconnected);
 }
 

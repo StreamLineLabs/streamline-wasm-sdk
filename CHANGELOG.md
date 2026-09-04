@@ -52,6 +52,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instance after a drop, instead of silently going quiet until the caller
   re-subscribes. `StreamlineClient`/`Consumer` re-send their persisted
   `subscribe` message once the reconnected socket reaches `Connected`.
+- Explicit disconnects and disabling auto-reconnect now cancel any pending
+  reconnect timeout, preventing a stale timer from retaining browser state or
+  reconnecting after teardown.
 - Callback ownership (`on_message`, `on_state_change`, `on_reconnect_failed`)
   moved behind `WsConnection` setter methods instead of public struct fields,
   removing a class of bugs where a caller could overwrite/desync callback
