@@ -1,6 +1,6 @@
 {
   "name": "@streamlinelabs/streamline-wasm",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Browser-native WebAssembly SDK for Streamline — the Redis of Streaming",
   "type": "module",
   "main": "pkg/streamline_wasm_sdk.js",

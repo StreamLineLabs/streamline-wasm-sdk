@@ -11,7 +11,7 @@
 //   import init, { StreamlineClient } from '@streamlinelabs/streamline-wasm';
 //
 // From CDN (in HTML <script type="module">):
-//   import init, { StreamlineClient } from 'https://cdn.jsdelivr.net/npm/@streamlinelabs/streamline-wasm@0.2.0/pkg/streamline_wasm_sdk.js';
+//   import init, { StreamlineClient } from 'https://cdn.jsdelivr.net/npm/@streamlinelabs/streamline-wasm@0.4.0/pkg/streamline_wasm_sdk.js';
 
 function connectAndWait(client) {
   return new Promise((resolve, reject) => {

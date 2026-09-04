@@ -28,7 +28,7 @@ Browser-native WebAssembly SDK for the [Streamline](https://github.com/streamlin
 - wasm-pack 0.12 or later
 - Node.js 20 or later and npm 10 or later (for package tooling)
 - A modern browser with WebAssembly and WebSocket support
-- Streamline server 0.2.0 or later (with WebSocket gateway enabled)
+- Streamline server 0.4.0 or later (with WebSocket gateway enabled)
 
 ## Configuration
 
