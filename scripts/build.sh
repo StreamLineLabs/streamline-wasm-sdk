@@ -19,11 +19,6 @@ rm -f pkg/package.json pkg/.gitignore
 echo "==> Building bundler target (for webpack/rollup/vite)..."
 wasm-pack build --target bundler --out-dir pkg-bundler --release
 
-# Copy bundler .d.ts if it has richer types
-if [ -f pkg-bundler/streamline_wasm_sdk.d.ts ]; then
-  cp pkg-bundler/streamline_wasm_sdk.d.ts pkg/streamline_wasm_sdk.d.ts
-fi
-
 rm -f pkg-bundler/package.json pkg-bundler/.gitignore
 
 echo ""
@@ -31,4 +26,4 @@ echo "==> Build complete!"
 echo "    Web target:     pkg/"
 echo "    Bundler target: pkg-bundler/"
 echo ""
-echo "    To publish: npm publish --access public"
+echo "    Publication is performed by the gated release workflow."

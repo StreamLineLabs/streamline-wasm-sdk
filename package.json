@@ -1,28 +1,40 @@
 {
   "name": "@streamlinelabs/streamline-wasm",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Browser-native WebAssembly SDK for Streamline — the Redis of Streaming",
+  "type": "module",
   "main": "pkg/streamline_wasm_sdk.js",
   "module": "pkg/streamline_wasm_sdk.js",
   "types": "pkg/streamline_wasm_sdk.d.ts",
   "unpkg": "pkg/streamline_wasm_sdk.js",
   "jsdelivr": "pkg/streamline_wasm_sdk.js",
+  "exports": {
+    ".": {
+      "types": "./pkg/streamline_wasm_sdk.d.ts",
+      "import": "./pkg/streamline_wasm_sdk.js",
+      "default": "./pkg/streamline_wasm_sdk.js"
+    },
+    "./package.json": "./package.json"
+  },
   "sideEffects": [
     "pkg/streamline_wasm_sdk.js"
   ],
   "files": [
     "pkg/",
-    "streamline-wasm.d.ts",
     "README.md",
     "LICENSE",
+    "NOTICE",
     "CHANGELOG.md"
   ],
   "scripts": {
     "build": "bash scripts/build.sh",
     "build:web": "wasm-pack build --target web --out-dir pkg --release",
     "build:bundler": "wasm-pack build --target bundler --out-dir pkg-bundler --release",
-    "test": "cargo test && wasm-pack test --headless --chrome",
+    "test": "cargo test && npm run test:browser",
     "test:unit": "cargo test",
+    "test:browser": "wasm-pack test --headless --chrome",
+    "test:live-browser": "wasm-pack test --headless --chrome . --features live-browser-tests --test live_browser",
+    "check:package": "npm run build && npm pack --dry-run",
     "clean": "rm -rf pkg pkg-bundler",
     "prepublishOnly": "npm run build"
   },
@@ -53,6 +65,7 @@
   },
   "license": "Apache-2.0",
   "engines": {
-    "node": ">=16.0.0"
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
   }
 }

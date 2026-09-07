@@ -6,7 +6,6 @@
 [![WASM](https://img.shields.io/badge/WASM-purple.svg)](https://webassembly.org/)
 [![npm](https://img.shields.io/npm/v/@streamlinelabs/streamline-wasm)](https://www.npmjs.com/package/@streamlinelabs/streamline-wasm)
 [![Docs](https://img.shields.io/badge/docs-streamlinelabs.dev-blue.svg)](https://streamlinelabs.dev/docs/sdks/wasm)
-[![crates.io](https://img.shields.io/crates/v/streamline-sdk.svg)](https://crates.io/crates/streamline-sdk)
 
 Browser-native WebAssembly SDK for the [Streamline](https://github.com/streamlinelabs/streamline) streaming platform. Stream messages directly from the browser using WebSocket — no server-side proxy required.
 
@@ -27,17 +26,44 @@ Browser-native WebAssembly SDK for the [Streamline](https://github.com/streamlin
 
 - Rust 1.80 or later (for building from source)
 - wasm-pack 0.12 or later
-- Streamline server 0.2.0 or later (with WebSocket gateway enabled)
+- Node.js 20 or later and npm 10 or later (for package tooling)
+- A modern browser with WebAssembly and WebSocket support
+- Streamline server 0.4.0 or later (with WebSocket gateway enabled)
 
 ## Configuration
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `url` | `string` | — | WebSocket URL (e.g., `ws://localhost:9094/ws`) |
-| `reconnect` | `boolean` | `true` | Auto-reconnect on disconnect |
-| `reconnectInterval` | `number` | `1000` | Reconnect delay in milliseconds |
-| `maxReconnectAttempts` | `number` | `10` | Maximum reconnection attempts |
-| `compression` | `string` | `none` | Compression codec (`none`, `lz4`, `snappy`) |
+| API | Type | Default | Description |
+|-----|------|---------|-------------|
+| constructor `url` | `string` | — | WebSocket URL (e.g., `ws://localhost:9094/ws`) |
+| `set_auto_reconnect(enabled)` | `boolean` | `true` | Enable or disable automatic reconnection |
+| `set_max_reconnect_attempts(max)` | `number` | `5` | Maximum attempts; `0` means unlimited |
+
+Reconnect delay uses exponential backoff starting at 1 second and is capped at
+30 seconds. The current release does not expose reconnect-interval or
+compression options.
+
+Reconnection is triggered by any unexpected socket close — including a
+peer-initiated close with code `1000` ("Normal Closure"), e.g. a server
+restart or idle-timeout — as long as `set_auto_reconnect(true)` (the
+default) is in effect. Only your own explicit `disconnect()` call suppresses
+reconnection; the close code alone is never treated as evidence that you
+intentionally disconnected.
+
+`connect()` starts the browser WebSocket handshake and returns before the
+handshake completes. Observe readiness through `on_state_change`,
+`connection_state()`, or `is_connected()` before sending:
+
+```javascript
+function connectAndWait(client) {
+  return new Promise((resolve, reject) => {
+    client.on_state_change((state) => {
+      if (state === 'Connected') resolve();
+    });
+    client.on_reconnect_failed((message) => reject(new Error(message)));
+    client.connect();
+  });
+}
+```
 
 ## Quick Start
 
@@ -54,7 +80,7 @@ async function main() {
   await init();
 
   const client = new StreamlineClient('ws://localhost:9094/ws');
-  client.connect();
+  await connectAndWait(client);
 
   // Produce a message
   client.produce('my-topic', 'Hello from browser!');
@@ -76,8 +102,12 @@ main();
 
   await init();
   const client = new StreamlineClient('ws://localhost:9094/ws');
+  client.on_state_change((state) => {
+    if (state === 'Connected') {
+      client.produce('events', JSON.stringify({ action: 'click', ts: Date.now() }));
+    }
+  });
   client.connect();
-  client.produce('events', JSON.stringify({ action: 'click', ts: Date.now() }));
 </script>
 ```
 
@@ -89,8 +119,12 @@ main();
 
   await init();
   const client = new StreamlineClient('ws://localhost:9094/ws');
+  client.on_state_change((state) => {
+    if (state === 'Connected') {
+      client.produce('events', JSON.stringify({ action: 'click', ts: Date.now() }));
+    }
+  });
   client.connect();
-  client.produce('events', JSON.stringify({ action: 'click', ts: Date.now() }));
 </script>
 ```
 
@@ -102,7 +136,7 @@ High-level client wrapping a WebSocket connection.
 
 ```javascript
 const client = new StreamlineClient('ws://localhost:9094/ws');
-client.connect();
+await connectAndWait(client);
 
 // Produce
 client.produce('topic', 'value');
@@ -111,6 +145,9 @@ client.produce_with_key('topic', 'key', 'value');
 // Subscribe / Unsubscribe
 client.subscribe('topic', callback);
 client.unsubscribe('topic');
+// Each topic keeps its own callback: subscribing to a second topic does not
+// replace the first topic's callback, and unsubscribing one topic leaves
+// other active subscriptions on the same client untouched.
 
 // Topic administration
 client.create_topic('new-topic', 3);  // 3 partitions
@@ -119,22 +156,38 @@ client.list_topics();
 
 // Connection state
 client.is_connected();
+client.connection_state();
 client.on_state_change((state) => console.log(state));
+client.on_reconnect_failed((message) => console.error(message));
+client.set_auto_reconnect(true);
+client.set_max_reconnect_attempts(5);
 client.disconnect();
 ```
 
 ### `Producer`
 
-Dedicated producer with optional default topic.
+Dedicated producer with optional default topic. Messages are batched and
+flushed automatically once `batch_size` is reached (default 100), or
+manually via `flush()`.
 
 ```javascript
 const producer = new Producer('ws://localhost:9094/ws', 'my-topic');
 producer.connect();
+// Send only after your application has observed that the connection is ready.
 producer.send('hello');                        // uses default topic
 producer.send('hello', 'other-topic');         // override topic
 producer.send_keyed('key-1', 'hello', null);   // keyed message
-producer.disconnect();
+producer.flush();                              // manual flush; throws on delivery failure
+producer.disconnect();                         // flushes, then closes; throws if the flush failed
 ```
+
+`flush()` (and any batch-size-triggered auto-flush inside `send()`/
+`send_keyed()`) sends queued messages in order and stops at the first
+failure: the failed message and everything queued after it stay in the
+batch — inspect with `producer.pending_count()` — so a retry never drops or
+duplicates records, and the delivery error is thrown rather than swallowed.
+`disconnect()` always closes the socket, but propagates a final flush
+failure the same way instead of silently discarding undelivered records.
 
 ### `Consumer`
 
@@ -147,6 +200,14 @@ consumer.start((msg) => console.log('Got:', msg));
 consumer.stop();
 ```
 
+`current_offset` is tracked automatically as messages are delivered to
+`start()`'s callback. **Offset commit is unsupported**: this SDK version has
+no wire protocol for the broker to acknowledge a commit, so `commit()`,
+`commit_offset()`, and any non-zero `set_auto_commit()` configuration fail
+closed immediately with `ErrorCode.Unsupported` rather than silently claiming
+the broker stored the offset — `committed_offset` therefore always reads `-1`.
+Rely on server-side consumer-group coordination for durable offset storage.
+
 ### `TopicAdmin`
 
 Administrative operations on topics.
@@ -154,6 +215,7 @@ Administrative operations on topics.
 ```javascript
 const admin = new TopicAdmin('ws://localhost:9094/ws');
 admin.connect();
+// Invoke operations only after the WebSocket handshake has completed.
 admin.on_response((resp) => console.log(JSON.parse(resp)));
 admin.create_topic('new-topic', 6);
 admin.list_topics();
@@ -266,7 +328,7 @@ client.on_state_change((state) => {
       console.log('✓ Connected');
       break;
     case 'Disconnected':
-      console.warn('⚠ Disconnected — attempting reconnect...');
+      console.warn('⚠ Disconnected');
       break;
     case 'Reconnecting':
       console.log('↻ Reconnecting...');
@@ -297,6 +359,7 @@ See [`demo/README.md`](demo/README.md) for details.
 
 - [Rust](https://rustup.rs/) 1.80+
 - [wasm-pack](https://rustwasm.github.io/wasm-pack/installer/)
+- [Node.js](https://nodejs.org/) 20+ with npm 10+
 
 ```bash
 # Add WASM target
@@ -314,15 +377,29 @@ cargo test                                # unit tests
 wasm-pack test --headless --chrome        # browser tests
 ```
 
-### npm Publishing
+The regular browser suite is self-contained and uses a browser WebSocket mock
+for lifecycle regressions. The mandatory live-browser suite requires an
+explicit fixture. For local Docker use, provide a published image:
 
 ```bash
-# Build and publish
-npm run build
-npm publish --access public
+STREAMLINE_FIXTURE_IMAGE=registry.example/streamline:test make integration-test
 ```
 
-The `prepublishOnly` script runs the build automatically before publishing.
+An already-running fixture can instead be supplied with
+`STREAMLINE_LIVE_HEALTH_URL` and `STREAMLINE_LIVE_WEBSOCKET_URL`. GitHub release
+jobs require repository variables with those two names. The repository does not
+currently provide a reachable public fixture, so absent configuration is an
+intentional release blocker; unit or mock-browser results must not be reported
+as a successful live integration run.
+
+### Publishing
+
+The supported distribution is the npm package
+`@streamlinelabs/streamline-wasm`. The Cargo package is an implementation
+artifact and is explicitly not published to crates.io. Official publication is
+performed by the tag-triggered release workflow, which validates both manifest
+versions, runs all release gates, publishes to npm with provenance, and attaches
+an SPDX SBOM to the GitHub release.
 
 ## Architecture
 
@@ -423,7 +500,7 @@ The [`examples/`](examples/) directory contains runnable examples:
 | [query-usage.js](examples/query-usage.js) | SQL analytics via REST API |
 | [schema-registry.js](examples/schema-registry.js) | Schema registration and validation |
 | [circuit-breaker.js](examples/circuit-breaker.js) | Resilient production with circuit breaker |
-| [security.js](examples/security.js) | Token authentication and secure connections |
+| [security.js](examples/security.js) | Supported HTTP bearer auth and WebSocket auth limitations |
 | [quickstart.html](examples/quickstart.html) | Runnable HTML page with WebSocket client |
 | [playground.html](examples/playground.html) | Interactive playground UI |
 
@@ -437,8 +514,7 @@ Licensed under the [Apache License, Version 2.0](LICENSE).
 
 ## Security
 
-To report a security vulnerability, please email **security@streamline.dev**.
+To report a security vulnerability, please email **security@streamlinelabs.dev**.
 Do **not** open a public issue.
 
 See the [Security Policy](https://github.com/streamlinelabs/streamline/blob/main/SECURITY.md) for details.
-

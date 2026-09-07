@@ -9,8 +9,8 @@
 use streamline_wasm_sdk::{
     AdminAction, AdminClient, BrowserMessage, BrowserResponse, CircuitBreaker, CircuitState,
     ConnectionState, Consumer, ErrorCode, Producer, QueryClient, SchemaFormat,
-    SchemaRegistryClient, StreamlineClient, StreamlineError, Telemetry, TopicAdmin,
-    TopicInfo, WsConnection,
+    SchemaRegistryClient, StreamlineClient, StreamlineError, Telemetry, TopicAdmin, TopicInfo,
+    WsConnection,
 };
 
 // ── StreamlineClient construction ────────────────────────────────────
@@ -97,7 +97,8 @@ fn producer_flush_empty_batch_succeeds() {
 #[test]
 fn producer_disconnect_on_fresh() {
     let mut producer = Producer::new("ws://localhost:9094/ws", None);
-    producer.disconnect();
+    // Nothing pending, so the flush-then-disconnect succeeds cleanly.
+    assert!(producer.disconnect().is_ok());
     assert_eq!(producer.pending_count(), 0);
 }
 
@@ -150,42 +151,42 @@ fn consumer_initial_offsets() {
 #[test]
 fn consumer_advance_offset_stores_next() {
     let mut consumer = Consumer::new("ws://localhost:9094/ws", "topic");
-    consumer.advance_offset(0);
+    assert!(consumer.advance_offset(0).is_ok());
     assert_eq!(consumer.current_offset(), 1);
-    consumer.advance_offset(1);
+    assert!(consumer.advance_offset(1).is_ok());
     assert_eq!(consumer.current_offset(), 2);
-    consumer.advance_offset(2);
+    assert!(consumer.advance_offset(2).is_ok());
     assert_eq!(consumer.current_offset(), 3);
 }
 
 #[test]
 fn consumer_advance_offset_ignores_lower() {
     let mut consumer = Consumer::new("ws://localhost:9094/ws", "topic");
-    consumer.advance_offset(10);
+    assert!(consumer.advance_offset(10).is_ok());
     assert_eq!(consumer.current_offset(), 11);
-    consumer.advance_offset(5);
+    assert!(consumer.advance_offset(5).is_ok());
     assert_eq!(consumer.current_offset(), 11);
-    consumer.advance_offset(9);
+    assert!(consumer.advance_offset(9).is_ok());
     assert_eq!(consumer.current_offset(), 11);
 }
 
 #[test]
 fn consumer_advance_offset_accepts_equal_to_current() {
     let mut consumer = Consumer::new("ws://localhost:9094/ws", "topic");
-    consumer.advance_offset(5);
+    assert!(consumer.advance_offset(5).is_ok());
     assert_eq!(consumer.current_offset(), 6);
     // 5 < 6, ignored
-    consumer.advance_offset(5);
+    assert!(consumer.advance_offset(5).is_ok());
     assert_eq!(consumer.current_offset(), 6);
     // 6 >= 6, advances
-    consumer.advance_offset(6);
+    assert!(consumer.advance_offset(6).is_ok());
     assert_eq!(consumer.current_offset(), 7);
 }
 
 #[test]
 fn consumer_advance_offset_large_jump() {
     let mut consumer = Consumer::new("ws://localhost:9094/ws", "topic");
-    consumer.advance_offset(1_000_000);
+    assert!(consumer.advance_offset(1_000_000).is_ok());
     assert_eq!(consumer.current_offset(), 1_000_001);
 }
 
@@ -200,7 +201,7 @@ fn consumer_stop_on_fresh_does_not_panic() {
 #[test]
 fn consumer_advance_offset_zero_on_fresh() {
     let mut consumer = Consumer::new("ws://localhost:9094/ws", "topic");
-    consumer.advance_offset(0);
+    assert!(consumer.advance_offset(0).is_ok());
     assert_eq!(consumer.current_offset(), 1);
     assert_eq!(consumer.committed_offset(), -1);
 }
@@ -208,7 +209,7 @@ fn consumer_advance_offset_zero_on_fresh() {
 #[test]
 fn consumer_committed_offset_stays_negative_without_commit() {
     let mut consumer = Consumer::new("ws://localhost:9094/ws", "topic");
-    consumer.advance_offset(100);
+    assert!(consumer.advance_offset(100).is_ok());
     assert_eq!(consumer.current_offset(), 101);
     // committed_offset stays at -1 because we never called commit
     assert_eq!(consumer.committed_offset(), -1);
@@ -341,7 +342,10 @@ fn sdk_version_is_semver() {
     let parts: Vec<&str> = streamline_wasm_sdk::SDK_VERSION.split('.').collect();
     assert_eq!(parts.len(), 3, "Version should be semver (x.y.z)");
     for part in parts {
-        assert!(part.parse::<u32>().is_ok(), "Each version part should be numeric");
+        assert!(
+            part.parse::<u32>().is_ok(),
+            "Each version part should be numeric"
+        );
     }
 }
 
@@ -560,7 +564,9 @@ fn schema_registry_validate_json_happy_path() {
 #[test]
 fn schema_registry_validate_json_string_type() {
     let client = SchemaRegistryClient::new("http://localhost:9094");
-    assert!(client.validate_json(r#"{"type":"string"}"#, r#""hello""#).unwrap());
+    assert!(client
+        .validate_json(r#"{"type":"string"}"#, r#""hello""#)
+        .unwrap());
 }
 
 #[test]
@@ -572,13 +578,17 @@ fn schema_registry_validate_json_number_type() {
 #[test]
 fn schema_registry_validate_json_boolean_type() {
     let client = SchemaRegistryClient::new("http://localhost:9094");
-    assert!(client.validate_json(r#"{"type":"boolean"}"#, "true").unwrap());
+    assert!(client
+        .validate_json(r#"{"type":"boolean"}"#, "true")
+        .unwrap());
 }
 
 #[test]
 fn schema_registry_validate_json_array_type() {
     let client = SchemaRegistryClient::new("http://localhost:9094");
-    assert!(client.validate_json(r#"{"type":"array"}"#, "[1,2,3]").unwrap());
+    assert!(client
+        .validate_json(r#"{"type":"array"}"#, "[1,2,3]")
+        .unwrap());
 }
 
 #[test]
@@ -608,6 +618,8 @@ mod schema_registry_error_paths {
     #[test]
     fn validate_json_invalid_value() {
         let client = SchemaRegistryClient::new("http://localhost:9094");
-        assert!(client.validate_json(r#"{"type":"object"}"#, "not json").is_err());
+        assert!(client
+            .validate_json(r#"{"type":"object"}"#, "not json")
+            .is_err());
     }
 }

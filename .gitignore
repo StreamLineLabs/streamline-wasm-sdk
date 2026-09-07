@@ -1,6 +1,7 @@
 # Build output
 target/
 pkg/
+pkg-bundler/
 Cargo.lock
 
 # OS files

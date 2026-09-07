@@ -1,7 +1,8 @@
 [package]
 name = "streamline-wasm-sdk"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
+rust-version = "1.80"
 description = "Browser-native WebAssembly SDK for Streamline streaming platform"
 license = "Apache-2.0"
 repository = "https://github.com/streamlinelabs/streamline-wasm-sdk"
@@ -9,11 +10,15 @@ homepage = "https://github.com/streamlinelabs/streamline-wasm-sdk"
 readme = "README.md"
 keywords = ["wasm", "webassembly", "streaming", "kafka"]
 categories = ["wasm", "web-programming", "asynchronous"]
+publish = false
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-# v0.3.0: Updated dependency versions
+[features]
+default = []
+live-browser-tests = []
+
 [dependencies]
 wasm-bindgen = "0.2"
 js-sys = "0.3"
@@ -32,3 +37,8 @@ serde_json = "1"
 unwrap_used = "warn"
 expect_used = "warn"
 
+[lints.rust]
+# Cargo 1.80's generated check-cfg list does not yet include cfg(test), even
+# for --all-targets. Declare it explicitly so the MSRV lint gate can still
+# deny genuinely unexpected cfg names.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(test)"] }

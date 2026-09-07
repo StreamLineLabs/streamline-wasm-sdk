@@ -505,6 +505,8 @@ mod tests {
     }
 
     #[test]
+    // Intentionally exercises both the derived `Copy` and `Clone` impls.
+    #[allow(clippy::clone_on_copy)]
     fn test_message_format_clone_copy() {
         let fmt = MessageFormat::RecordBatch;
         let copied = fmt;

@@ -14,7 +14,8 @@ Thank you for your interest in contributing to the Streamline WASM SDK! This gui
 
 ## Prerequisites
 
-- Rust 1.75 or later (install via [rustup](https://rustup.rs/))
+- Rust 1.80 or later (install via [rustup](https://rustup.rs/))
+- Node.js 20 or later with npm 10 or later
 - `wasm-pack` ([install](https://rustwasm.github.io/wasm-pack/installer/))
 - `wasm32-unknown-unknown` target (`rustup target add wasm32-unknown-unknown`)
 
@@ -41,6 +42,9 @@ cargo test
 # WASM tests (headless browser)
 wasm-pack test --headless --chrome
 
+# Mandatory live-browser tests (requires an explicit fixture)
+STREAMLINE_FIXTURE_IMAGE=registry.example/streamline:test make integration-test
+
 # Check compilation for WASM target
 cargo check --target wasm32-unknown-unknown
 ```
@@ -57,6 +61,10 @@ cargo fmt --all -- --check
 # Run clippy lints
 cargo clippy --all-targets -- -D warnings
 
+# Audit dependencies and enforce deny.toml
+cargo audit
+cargo deny check
+
 # Build docs
 cargo doc --no-deps
 ```
@@ -64,7 +72,6 @@ cargo doc --no-deps
 ## Code Style
 
 - Follow Rust conventions and the existing code patterns
-- Use `thiserror` for error types
 - Propagate errors with `?` — avoid `.unwrap()` in library code
 - Add doc comments (`///`) for all public items
 - Default to private visibility; use `pub(crate)` for internal sharing

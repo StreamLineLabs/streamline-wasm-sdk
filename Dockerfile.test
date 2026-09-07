@@ -6,7 +6,8 @@
 #   docker run --rm streamline-wasm-sdk-test
 #
 # For integration tests with a live Streamline server:
-#   docker compose -f docker-compose.test.yml up -d
+#   STREAMLINE_FIXTURE_IMAGE=registry.example/streamline:test \
+#     docker compose -f docker-compose.test.yml up -d
 #   docker build -f Dockerfile.test -t streamline-wasm-sdk-test .
 #   docker run --rm --network host streamline-wasm-sdk-test cargo test
 
@@ -19,7 +20,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install wasm-pack and wasm32 target
-RUN curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+RUN cargo install wasm-pack --version 0.13.1 --locked
 RUN rustup target add wasm32-unknown-unknown
 
 # Install chromedriver for headless browser tests
@@ -27,12 +28,6 @@ ENV CHROME_BIN=/usr/bin/chromium
 ENV CHROMEDRIVER_SKIP_DOWNLOAD=true
 
 WORKDIR /app
-
-# Cache dependencies
-COPY Cargo.toml Cargo.lock* ./
-RUN mkdir src && echo "fn main() {}" > src/lib.rs && \
-    cargo build --target wasm32-unknown-unknown 2>/dev/null || true && \
-    rm -rf src
 
 # Copy source
 COPY . .

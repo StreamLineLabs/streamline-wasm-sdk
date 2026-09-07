@@ -218,7 +218,7 @@ fn now_ms() -> f64 {
                         })
                 }
             })
-            .unwrap_or_else(|| js_sys::Date::now())
+            .unwrap_or_else(js_sys::Date::now)
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -495,6 +495,8 @@ mod tests {
     }
 
     #[test]
+    // Intentionally exercises both the derived `Copy` and `Clone` impls.
+    #[allow(clippy::clone_on_copy)]
     fn test_circuit_state_clone_copy() {
         let state = CircuitState::HalfOpen;
         let copied = state;

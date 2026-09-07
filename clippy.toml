@@ -1,0 +1,6 @@
+# Test-only relaxations for the `unwrap_used` / `expect_used` lints declared
+# in Cargo.toml's [lints.clippy]. Production code must still avoid
+# `.unwrap()`/`.expect()` — these only exempt `#[cfg(test)]` modules and
+# `#[test]` functions.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true

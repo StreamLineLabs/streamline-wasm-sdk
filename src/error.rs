@@ -31,6 +31,11 @@ pub enum ErrorCode {
     SchemaRegistryError,
     /// A configuration or validation error.
     ConfigurationError,
+    /// The requested operation is not implemented by this SDK version and
+    /// was refused (fail-closed) rather than silently doing something the
+    /// SDK cannot verify — e.g. offset commit without a broker
+    /// acknowledgement protocol.
+    Unsupported,
     /// An unknown error occurred.
     Unknown,
 }
@@ -128,12 +133,16 @@ impl StreamlineError {
     }
 
     pub fn configuration(detail: &str) -> JsValue {
-        Self::new(
-            ErrorCode::ConfigurationError,
-            detail,
-            false,
-        )
-        .into()
+        Self::new(ErrorCode::ConfigurationError, detail, false).into()
+    }
+
+    /// Fail-closed error for operations this SDK version deliberately
+    /// refuses to perform rather than claim an unverifiable result (e.g.
+    /// committing consumer offsets without a broker acknowledgement
+    /// protocol). Never retryable — retrying will not make the operation
+    /// supported.
+    pub fn unsupported(detail: &str) -> JsValue {
+        Self::new(ErrorCode::Unsupported, detail, false).into()
     }
 
     pub fn auth_failed(detail: &str) -> JsValue {
@@ -176,6 +185,9 @@ impl StreamlineError {
             }
             ErrorCode::ConfigurationError => {
                 "Check the provided configuration values (e.g. topic names, parameters)".to_string()
+            }
+            ErrorCode::Unsupported => {
+                "This SDK version does not implement this operation; it fails closed instead of guessing. Check the CHANGELOG for protocol support status".to_string()
             }
             _ => "Check server logs for more details".to_string(),
         }
@@ -247,6 +259,7 @@ mod tests {
         let _ = StreamlineError::produce_error("full");
         let _ = StreamlineError::timeout("fetch");
         let _ = StreamlineError::auth_failed("bad creds");
+        let _ = StreamlineError::unsupported("commit acknowledgement protocol not implemented");
     }
 
     // ── Additional coverage ──────────────────────────────────────────
@@ -275,6 +288,8 @@ mod tests {
     }
 
     #[test]
+    // Intentionally exercises both the derived `Copy` and `Clone` impls.
+    #[allow(clippy::clone_on_copy)]
     fn test_error_code_clone_copy() {
         let code = ErrorCode::ProduceError;
         let copied = code;
@@ -338,6 +353,19 @@ mod tests {
     }
 
     #[test]
+    fn test_hint_unsupported() {
+        let err = StreamlineError::new(ErrorCode::Unsupported, "commit not implemented", false);
+        assert!(err.hint().contains("does not implement"));
+    }
+
+    #[test]
+    fn test_unsupported_not_retryable() {
+        let err = StreamlineError::new(ErrorCode::Unsupported, "commit not implemented", false);
+        assert!(!err.is_retryable());
+        assert_eq!(err.code(), ErrorCode::Unsupported);
+    }
+
+    #[test]
     fn test_configuration_error_not_retryable() {
         let err = StreamlineError::new(ErrorCode::ConfigurationError, "bad", false);
         assert!(!err.is_retryable());
@@ -357,6 +385,7 @@ mod tests {
             ErrorCode::QueryError,
             ErrorCode::SchemaRegistryError,
             ErrorCode::ConfigurationError,
+            ErrorCode::Unsupported,
             ErrorCode::Unknown,
         ];
         for i in 0..codes.len() {

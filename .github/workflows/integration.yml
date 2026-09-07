@@ -8,48 +8,55 @@ on:
   schedule:
     - cron: '0 4 * * 1' # Weekly Monday 4am UTC
   workflow_dispatch:
+  workflow_call:
 
 jobs:
   integration:
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    services:
-      streamline:
-        image: ghcr.io/streamlinelabs/streamline:latest
-        ports:
-          - 9092:9092
-          - 9094:9094
-        options: >-
-          --health-cmd "curl -f http://localhost:9094/health || exit 1"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: "1.80"
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
       - name: Install wasm-pack
-        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-      - uses: actions/setup-node@v4
+        uses: taiki-e/install-action@v2
         with:
-          node-version: '20'
-      - name: Wait for Streamline
+          tool: wasm-pack@0.13.1
+      - name: Install Chrome
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+      - name: Require a configured live fixture
+        env:
+          STREAMLINE_LIVE_HEALTH_URL: ${{ vars.STREAMLINE_LIVE_HEALTH_URL }}
+          STREAMLINE_LIVE_WEBSOCKET_URL: ${{ vars.STREAMLINE_LIVE_WEBSOCKET_URL }}
+        run: |
+          if [ -z "$STREAMLINE_LIVE_HEALTH_URL" ] || [ -z "$STREAMLINE_LIVE_WEBSOCKET_URL" ]; then
+            echo "Release blocker: configure STREAMLINE_LIVE_HEALTH_URL and STREAMLINE_LIVE_WEBSOCKET_URL repository variables." >&2
+            exit 1
+          fi
+      - name: Wait for configured Streamline fixture
+        env:
+          STREAMLINE_LIVE_HEALTH_URL: ${{ vars.STREAMLINE_LIVE_HEALTH_URL }}
         run: |
           for i in $(seq 1 30); do
-            curl -sf http://localhost:9094/health && break
+            if curl -sf "$STREAMLINE_LIVE_HEALTH_URL"; then
+              exit 0
+            fi
             echo "Waiting for Streamline... ($i/30)"
             sleep 2
           done
-      - name: Build wasm package
-        run: wasm-pack build --target nodejs
-      - name: Run integration tests
-        run: |
-          if [ -d tests-integration ]; then
-            cd tests-integration && npm ci && npm test
-          else
-            wasm-pack test --node
-          fi
+          echo "Streamline fixture did not become healthy" >&2
+          exit 1
+      - name: Run mandatory live-browser suite
+        run: >-
+          wasm-pack test --headless --chrome .
+          --features live-browser-tests
+          --test live_browser
         env:
-          STREAMLINE_BOOTSTRAP_SERVERS: localhost:9092
-          STREAMLINE_HTTP_URL: http://localhost:9094
+          STREAMLINE_LIVE_WEBSOCKET_URL: ${{ vars.STREAMLINE_LIVE_WEBSOCKET_URL }}

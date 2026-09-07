@@ -1,7 +1,7 @@
 //! Reconnection and connection lifecycle tests for the Streamline WASM SDK.
 
-use wasm_bindgen_test::*;
 use streamline_wasm_sdk::{ConnectionState, StreamlineClient, WsConnection};
+use wasm_bindgen_test::*;
 
 wasm_bindgen_test_configure!(run_in_browser);
 
@@ -152,4 +152,3 @@ fn connection_with_path_in_url() {
     assert_eq!(conn.state(), ConnectionState::Disconnected);
 }
 // resolve panic in wasm32 target serialization
-

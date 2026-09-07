@@ -9,6 +9,18 @@ use web_sys::{CloseEvent, ErrorEvent, MessageEvent, WebSocket};
 use crate::error::StreamlineError;
 use crate::protocol::BrowserMessage;
 
+/// Best-effort extraction of the `topic` field from a raw protocol message,
+/// used to demultiplex incoming messages to the right per-topic callback.
+/// Returns `None` for malformed JSON or messages without a `topic` field
+/// (e.g. `topic_list`/`error` admin responses).
+fn extract_topic(json: &str) -> Option<String> {
+    serde_json::from_str::<serde_json::Value>(json)
+        .ok()?
+        .get("topic")?
+        .as_str()
+        .map(str::to_string)
+}
+
 /// Connection state for the WebSocket transport.
 #[wasm_bindgen]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,19 +38,29 @@ pub enum ConnectionState {
 /// Set `auto_reconnect` to `false` to disable this behaviour.
 #[wasm_bindgen]
 pub struct WsConnection {
+    inner: Rc<RefCell<WsConnectionInner>>,
+}
+
+struct WsConnectionInner {
     url: String,
     ws: Option<WebSocket>,
     state: ConnectionState,
     reconnect_attempts: u32,
     max_reconnect_attempts: u32,
+    reconnect_timer_id: Option<i32>,
     auto_reconnect: bool,
     intentional_disconnect: bool,
-    #[wasm_bindgen(skip)]
-    pub on_message: Option<js_sys::Function>,
-    #[wasm_bindgen(skip)]
-    pub on_state_change: Option<js_sys::Function>,
-    #[wasm_bindgen(skip)]
-    pub on_reconnect_failed: Option<js_sys::Function>,
+    persistent_messages: Vec<(String, String)>,
+    /// Per-topic subscription callbacks, keyed by topic name. Demultiplexed
+    /// by inspecting the `topic` field of each incoming message so that
+    /// later `subscribe()` calls for a *different* topic do not clobber
+    /// earlier ones on the same connection.
+    topic_callbacks: Vec<(String, js_sys::Function)>,
+    /// Fallback callback used for messages that carry no `topic` field
+    /// (e.g. admin responses such as `topic_list`/`error`/`ack`).
+    on_message: Option<js_sys::Function>,
+    on_state_change: Option<js_sys::Function>,
+    on_reconnect_failed: Option<js_sys::Function>,
 }
 
 #[wasm_bindgen]
@@ -47,74 +69,118 @@ impl WsConnection {
     #[wasm_bindgen(constructor)]
     pub fn new(url: &str) -> Self {
         Self {
-            url: url.to_string(),
-            ws: None,
-            state: ConnectionState::Disconnected,
-            reconnect_attempts: 0,
-            max_reconnect_attempts: 5,
-            auto_reconnect: true,
-            intentional_disconnect: false,
-            on_message: None,
-            on_state_change: None,
-            on_reconnect_failed: None,
+            inner: Rc::new(RefCell::new(WsConnectionInner {
+                url: url.to_string(),
+                ws: None,
+                state: ConnectionState::Disconnected,
+                reconnect_attempts: 0,
+                max_reconnect_attempts: 5,
+                reconnect_timer_id: None,
+                auto_reconnect: true,
+                intentional_disconnect: false,
+                persistent_messages: Vec::new(),
+                topic_callbacks: Vec::new(),
+                on_message: None,
+                on_state_change: None,
+                on_reconnect_failed: None,
+            })),
         }
     }
 
     /// Enable or disable automatic reconnection (default: enabled).
     pub fn set_auto_reconnect(&mut self, enabled: bool) {
-        self.auto_reconnect = enabled;
+        let was_reconnecting = {
+            let mut inner = self.inner.borrow_mut();
+            inner.auto_reconnect = enabled;
+            inner.state == ConnectionState::Reconnecting
+        };
+        if !enabled {
+            Self::cancel_reconnect_timer(&self.inner);
+            if was_reconnecting {
+                Self::set_state(&self.inner, ConnectionState::Disconnected);
+            }
+        }
     }
 
     /// Returns `true` when automatic reconnection is enabled.
     pub fn auto_reconnect(&self) -> bool {
-        self.auto_reconnect
+        self.inner.borrow().auto_reconnect
     }
 
     /// Set the maximum number of reconnection attempts (default: 5).
     /// Set to `0` for unlimited attempts.
     pub fn set_max_reconnect_attempts(&mut self, max: u32) {
-        self.max_reconnect_attempts = max;
+        self.inner.borrow_mut().max_reconnect_attempts = max;
     }
 
     /// Get the current connection state.
     pub fn state(&self) -> ConnectionState {
-        self.state
+        self.inner.borrow().state
     }
 
     /// How many reconnection attempts have been made since the last
     /// successful connection.
     pub fn reconnect_attempts(&self) -> u32 {
-        self.reconnect_attempts
+        self.inner.borrow().reconnect_attempts
     }
 
     /// Connect to the Streamline server.
     pub fn connect(&mut self) -> Result<(), JsValue> {
-        self.intentional_disconnect = false;
-        self.set_state(ConnectionState::Connecting);
+        Self::cancel_reconnect_timer(&self.inner);
+        {
+            let mut inner = self.inner.borrow_mut();
+            if inner.ws.as_ref().is_some_and(|ws| {
+                matches!(ws.ready_state(), WebSocket::CONNECTING | WebSocket::OPEN)
+            }) {
+                return Ok(());
+            }
+            inner.intentional_disconnect = false;
+        }
+        Self::set_state(&self.inner, ConnectionState::Connecting);
+        {
+            let inner = self.inner.borrow();
+            if inner.intentional_disconnect || inner.state != ConnectionState::Connecting {
+                return Ok(());
+            }
+        }
 
-        let ws = WebSocket::new(&self.url)?;
+        let url = self.inner.borrow().url.clone();
+        let ws = match WebSocket::new(&url) {
+            Ok(ws) => ws,
+            Err(error) => {
+                Self::set_state(&self.inner, ConnectionState::Disconnected);
+                return Err(error);
+            }
+        };
         ws.set_binary_type(web_sys::BinaryType::Arraybuffer);
 
-        self.setup_event_handlers(&ws)?;
-        self.ws = Some(ws);
+        Self::setup_event_handlers(&self.inner, &ws);
+        self.inner.borrow_mut().ws = Some(ws);
         Ok(())
     }
 
     /// Disconnect from the server. This is intentional and will **not**
     /// trigger automatic reconnection.
     pub fn disconnect(&mut self) {
-        self.intentional_disconnect = true;
-        if let Some(ref ws) = self.ws {
+        Self::cancel_reconnect_timer(&self.inner);
+        let ws = {
+            let mut inner = self.inner.borrow_mut();
+            inner.intentional_disconnect = true;
+            inner.reconnect_attempts = 0;
+            inner.persistent_messages.clear();
+            inner.topic_callbacks.clear();
+            inner.ws.take()
+        };
+        if let Some(ws) = ws {
             let _ = ws.close();
         }
-        self.ws = None;
-        self.reconnect_attempts = 0;
-        self.set_state(ConnectionState::Disconnected);
+        Self::set_state(&self.inner, ConnectionState::Disconnected);
     }
 
     /// Send a protocol message over the WebSocket.
     pub fn send(&self, message: &str) -> Result<(), JsValue> {
-        match &self.ws {
+        let ws = self.inner.borrow().ws.clone();
+        match ws {
             Some(ws) if ws.ready_state() == WebSocket::OPEN => ws.send_with_str(message),
             _ => Err(StreamlineError::not_connected()),
         }
@@ -122,15 +188,444 @@ impl WsConnection {
 
     /// Check whether the connection is open.
     pub fn is_connected(&self) -> bool {
-        self.state == ConnectionState::Connected
+        let inner = self.inner.borrow();
+        inner.state == ConnectionState::Connected
+            && inner
+                .ws
+                .as_ref()
+                .is_some_and(|ws| ws.ready_state() == WebSocket::OPEN)
     }
 
     /// Calculate reconnection delay with exponential backoff (in ms).
     pub fn reconnect_delay_ms(&self) -> u32 {
         let base_ms = 1000u32;
         let max_ms = 30_000u32;
-        let delay = base_ms.saturating_mul(2u32.saturating_pow(self.reconnect_attempts));
+        let attempts = self.inner.borrow().reconnect_attempts;
+        let delay = base_ms.saturating_mul(2u32.saturating_pow(attempts));
         delay.min(max_ms)
+    }
+}
+
+// Internal helper methods (not exported to JS).
+impl WsConnection {
+    /// Send a typed browser message (internal only — not exported to JS).
+    pub(crate) fn send_message(&self, msg: &BrowserMessage) -> Result<(), JsValue> {
+        let json = msg
+            .to_json()
+            .map_err(|e| StreamlineError::serialization(&e.to_string()))?;
+        self.send(&json)
+    }
+
+    pub(crate) fn send_persistent_when_ready(
+        &self,
+        key: String,
+        message: String,
+    ) -> Result<(), JsValue> {
+        let ready_socket = {
+            let mut inner = self.inner.borrow_mut();
+            let ready_socket = inner
+                .ws
+                .as_ref()
+                .filter(|ws| ws.ready_state() == WebSocket::OPEN)
+                .cloned();
+            match inner.state {
+                ConnectionState::Connected if ready_socket.is_some() => {}
+                ConnectionState::Connecting | ConnectionState::Reconnecting => {}
+                _ => return Err(StreamlineError::not_connected()),
+            }
+            if let Some((_, stored_message)) = inner
+                .persistent_messages
+                .iter_mut()
+                .find(|(stored_key, _)| stored_key == &key)
+            {
+                *stored_message = message.clone();
+            } else {
+                inner.persistent_messages.push((key, message.clone()));
+            }
+            ready_socket
+        };
+
+        match ready_socket {
+            Some(ws) => ws.send_with_str(&message),
+            None => Ok(()),
+        }
+    }
+
+    pub(crate) fn remove_persistent_message(&self, key: &str) {
+        self.inner
+            .borrow_mut()
+            .persistent_messages
+            .retain(|(stored_key, _)| stored_key != key);
+    }
+
+    pub(crate) fn set_on_message(&mut self, callback: js_sys::Function) {
+        self.inner.borrow_mut().on_message = Some(callback);
+    }
+
+    /// Register (or replace) the callback for a specific topic. Unlike
+    /// [`set_on_message`], multiple topics can each own a distinct callback
+    /// on the same connection — registering a callback for `topic_b` does
+    /// not affect a previously registered callback for `topic_a`.
+    pub(crate) fn set_topic_callback(&self, topic: &str, callback: js_sys::Function) {
+        let mut inner = self.inner.borrow_mut();
+        if let Some((_, stored)) = inner
+            .topic_callbacks
+            .iter_mut()
+            .find(|(stored_topic, _)| stored_topic == topic)
+        {
+            *stored = callback;
+        } else {
+            inner.topic_callbacks.push((topic.to_string(), callback));
+        }
+    }
+
+    /// Remove the callback registered for a specific topic, if any. Other
+    /// topics' callbacks on the same connection are left untouched.
+    pub(crate) fn remove_topic_callback(&self, topic: &str) {
+        self.inner
+            .borrow_mut()
+            .topic_callbacks
+            .retain(|(stored_topic, _)| stored_topic != topic);
+    }
+
+    pub(crate) fn set_on_state_change(&mut self, callback: js_sys::Function) {
+        let state = {
+            let mut inner = self.inner.borrow_mut();
+            inner.on_state_change = Some(callback.clone());
+            inner.state
+        };
+        let _ = callback.call1(&JsValue::NULL, &JsValue::from(Self::state_name(state)));
+    }
+
+    pub(crate) fn set_on_reconnect_failed(&mut self, callback: js_sys::Function) {
+        self.inner.borrow_mut().on_reconnect_failed = Some(callback);
+    }
+
+    /// Whether a reconnection attempt should be scheduled.
+    #[allow(dead_code)]
+    pub(crate) fn should_reconnect(&self) -> bool {
+        let inner = self.inner.borrow();
+        if !inner.auto_reconnect || inner.intentional_disconnect {
+            return false;
+        }
+        // max_reconnect_attempts == 0 means unlimited
+        inner.max_reconnect_attempts == 0 || inner.reconnect_attempts < inner.max_reconnect_attempts
+    }
+
+    fn state_name(state: ConnectionState) -> &'static str {
+        match state {
+            ConnectionState::Disconnected => "Disconnected",
+            ConnectionState::Connecting => "Connecting",
+            ConnectionState::Connected => "Connected",
+            ConnectionState::Reconnecting => "Reconnecting",
+        }
+    }
+
+    fn set_state(shared: &Rc<RefCell<WsConnectionInner>>, state: ConnectionState) {
+        let callback = {
+            let mut inner = shared.borrow_mut();
+            inner.state = state;
+            inner.on_state_change.clone()
+        };
+        if let Some(callback) = callback {
+            let _ = callback.call1(&JsValue::NULL, &JsValue::from(Self::state_name(state)));
+        }
+    }
+
+    fn cancel_reconnect_timer(shared: &Rc<RefCell<WsConnectionInner>>) {
+        let timer_id = shared.borrow_mut().reconnect_timer_id.take();
+        #[cfg(target_arch = "wasm32")]
+        if let Some(timer_id) = timer_id {
+            if let Some(window) = web_sys::window() {
+                window.clear_timeout_with_handle(timer_id);
+            }
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        let _ = timer_id;
+    }
+
+    fn setup_event_handlers(shared: &Rc<RefCell<WsConnectionInner>>, ws: &WebSocket) {
+        // ── onopen ────────────────────────────────────────────────
+        {
+            let weak = Rc::downgrade(shared);
+            let socket = ws.clone();
+            let onopen = Closure::<dyn FnMut()>::new(move || {
+                let Some(shared) = weak.upgrade() else {
+                    return;
+                };
+                let (callback, persistent_messages) = {
+                    let mut inner = shared.borrow_mut();
+                    let is_current = inner.ws.as_ref().is_some_and(|ws| ws == &socket);
+                    if !is_current || inner.intentional_disconnect {
+                        return;
+                    }
+                    inner.state = ConnectionState::Connected;
+                    inner.reconnect_attempts = 0;
+                    (
+                        inner.on_state_change.clone(),
+                        inner
+                            .persistent_messages
+                            .iter()
+                            .map(|(_, message)| message.clone())
+                            .collect::<Vec<_>>(),
+                    )
+                };
+                for message in persistent_messages {
+                    if socket.ready_state() != WebSocket::OPEN {
+                        break;
+                    }
+                    if let Err(error) = socket.send_with_str(&message) {
+                        web_sys::console::error_1(
+                            &format!(
+                                "[streamline-wasm] Failed to restore persistent message: {:?}",
+                                error
+                            )
+                            .into(),
+                        );
+                        break;
+                    }
+                }
+                if let Some(callback) = callback {
+                    let _ = callback.call1(&JsValue::NULL, &JsValue::from("Connected"));
+                }
+                web_sys::console::log_1(&"[streamline-wasm] WebSocket connected".into());
+            });
+            ws.set_onopen(Some(onopen.as_ref().unchecked_ref()));
+            onopen.forget();
+        }
+
+        // ── onmessage ────────────────────────────────────────────
+        {
+            let weak = Rc::downgrade(shared);
+            let socket = ws.clone();
+            let onmessage = Closure::<dyn FnMut(MessageEvent)>::new(move |e: MessageEvent| {
+                let Some(shared) = weak.upgrade() else {
+                    return;
+                };
+                let Some(message) = e.data().as_string() else {
+                    return;
+                };
+                // Demultiplex by the message's `topic` field so each
+                // subscribed topic keeps its own callback — later
+                // subscriptions never overwrite earlier ones. Messages
+                // without a topic (admin/ack/list responses) fall back to
+                // the connection's default callback.
+                let topic = extract_topic(&message);
+                let callback = {
+                    let inner = shared.borrow();
+                    if !inner.ws.as_ref().is_some_and(|ws| ws == &socket) {
+                        return;
+                    }
+                    topic
+                        .as_deref()
+                        .and_then(|topic| {
+                            inner
+                                .topic_callbacks
+                                .iter()
+                                .find(|(stored_topic, _)| stored_topic == topic)
+                                .map(|(_, callback)| callback.clone())
+                        })
+                        .or_else(|| inner.on_message.clone())
+                };
+                if let Some(callback) = callback {
+                    let _ = callback.call1(&JsValue::NULL, &JsValue::from(message));
+                }
+            });
+            ws.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
+            onmessage.forget();
+        }
+
+        // ── onerror ──────────────────────────────────────────────
+        {
+            let weak = Rc::downgrade(shared);
+            let socket = ws.clone();
+            let onerror = Closure::<dyn FnMut(ErrorEvent)>::new(move |e: ErrorEvent| {
+                let Some(shared) = weak.upgrade() else {
+                    return;
+                };
+                if !shared.borrow().ws.as_ref().is_some_and(|ws| ws == &socket) {
+                    return;
+                }
+                web_sys::console::error_1(
+                    &format!("[streamline-wasm] WebSocket error: {:?}", e.message()).into(),
+                );
+            });
+            ws.set_onerror(Some(onerror.as_ref().unchecked_ref()));
+            onerror.forget();
+        }
+
+        // ── onclose (with auto-reconnect) ────────────────────────
+        {
+            let weak = Rc::downgrade(shared);
+            let socket = ws.clone();
+            let onclose = Closure::<dyn FnMut(CloseEvent)>::new(move |e: CloseEvent| {
+                let Some(shared) = weak.upgrade() else {
+                    return;
+                };
+                web_sys::console::log_1(
+                    &format!(
+                        "[streamline-wasm] WebSocket closed: code={}, reason={}",
+                        e.code(),
+                        e.reason()
+                    )
+                    .into(),
+                );
+
+                let intentional_disconnect = {
+                    let mut inner = shared.borrow_mut();
+                    if !inner.ws.as_ref().is_some_and(|ws| ws == &socket) {
+                        return;
+                    }
+                    inner.ws = None;
+                    inner.intentional_disconnect
+                };
+
+                // Only *our own* call to `disconnect()` should suppress
+                // reconnection. Close code 1000 ("Normal Closure") is not by
+                // itself evidence of that — a peer (server restart, load
+                // balancer, idle-timeout, etc.) can close cleanly with code
+                // 1000 while the caller still wants the connection kept
+                // alive. Treating 1000 as always-intentional silently
+                // stopped `auto_reconnect` from ever kicking in for the most
+                // common "server closed the socket" case.
+                if intentional_disconnect {
+                    Self::set_state(&shared, ConnectionState::Disconnected);
+                    return;
+                }
+
+                Self::schedule_reconnect(&shared);
+            });
+            ws.set_onclose(Some(onclose.as_ref().unchecked_ref()));
+            onclose.forget();
+        }
+    }
+
+    fn schedule_reconnect(shared: &Rc<RefCell<WsConnectionInner>>) {
+        let (current_attempts, max_attempts, auto_reconnect, intentional_disconnect, timer_pending) = {
+            let inner = shared.borrow();
+            (
+                inner.reconnect_attempts,
+                inner.max_reconnect_attempts,
+                inner.auto_reconnect,
+                inner.intentional_disconnect,
+                inner.reconnect_timer_id.is_some(),
+            )
+        };
+
+        if timer_pending {
+            return;
+        }
+
+        if !auto_reconnect || intentional_disconnect {
+            Self::set_state(shared, ConnectionState::Disconnected);
+            return;
+        }
+
+        if max_attempts > 0 && current_attempts >= max_attempts {
+            web_sys::console::error_1(
+                &format!(
+                    "[streamline-wasm] Max reconnection attempts ({}) exhausted",
+                    max_attempts
+                )
+                .into(),
+            );
+            Self::fail_reconnect(shared, "Max reconnection attempts exhausted");
+            return;
+        }
+
+        let delay_ms = 1000u32
+            .saturating_mul(2u32.saturating_pow(current_attempts))
+            .min(30_000);
+        let attempt = current_attempts + 1;
+        {
+            let mut inner = shared.borrow_mut();
+            inner.reconnect_attempts = attempt;
+        }
+        Self::set_state(shared, ConnectionState::Reconnecting);
+
+        web_sys::console::log_1(
+            &format!(
+                "[streamline-wasm] Reconnecting in {}ms (attempt {}/{})",
+                delay_ms,
+                attempt,
+                if max_attempts == 0 {
+                    "∞".to_string()
+                } else {
+                    max_attempts.to_string()
+                },
+            )
+            .into(),
+        );
+
+        let weak = Rc::downgrade(shared);
+        let reconnect = Closure::<dyn FnMut()>::new(move || {
+            let Some(shared) = weak.upgrade() else {
+                return;
+            };
+            shared.borrow_mut().reconnect_timer_id = None;
+            let (url, should_continue, should_mark_disconnected) = {
+                let inner = shared.borrow();
+                let waiting_to_reconnect =
+                    inner.state == ConnectionState::Reconnecting && inner.ws.is_none();
+                (
+                    inner.url.clone(),
+                    inner.auto_reconnect && !inner.intentional_disconnect && waiting_to_reconnect,
+                    waiting_to_reconnect && (!inner.auto_reconnect || inner.intentional_disconnect),
+                )
+            };
+            if !should_continue {
+                if should_mark_disconnected {
+                    Self::set_state(&shared, ConnectionState::Disconnected);
+                }
+                return;
+            }
+
+            match WebSocket::new(&url) {
+                Ok(ws) => {
+                    ws.set_binary_type(web_sys::BinaryType::Arraybuffer);
+                    Self::setup_event_handlers(&shared, &ws);
+                    shared.borrow_mut().ws = Some(ws);
+                }
+                Err(error) => {
+                    web_sys::console::error_1(
+                        &format!("[streamline-wasm] Reconnect failed: {:?}", error).into(),
+                    );
+                    Self::schedule_reconnect(&shared);
+                }
+            }
+        });
+
+        let Some(window) = web_sys::window() else {
+            Self::fail_reconnect(shared, "Browser timer unavailable");
+            return;
+        };
+        match window.set_timeout_with_callback_and_timeout_and_arguments_0(
+            reconnect.as_ref().unchecked_ref(),
+            delay_ms as i32,
+        ) {
+            Ok(timer_id) => {
+                shared.borrow_mut().reconnect_timer_id = Some(timer_id);
+                reconnect.forget();
+            }
+            Err(error) => {
+                web_sys::console::error_1(
+                    &format!(
+                        "[streamline-wasm] Failed to schedule reconnect: {:?}",
+                        error
+                    )
+                    .into(),
+                );
+                Self::fail_reconnect(shared, "Failed to schedule reconnect");
+            }
+        }
+    }
+
+    fn fail_reconnect(shared: &Rc<RefCell<WsConnectionInner>>, message: &str) {
+        let callback = shared.borrow().on_reconnect_failed.clone();
+        Self::set_state(shared, ConnectionState::Disconnected);
+        if let Some(callback) = callback {
+            let _ = callback.call1(&JsValue::NULL, &JsValue::from(message));
+        }
     }
 }
 
@@ -139,18 +634,14 @@ mod tests {
     use super::*;
 
     fn make_conn(attempts: u32, max: u32, auto: bool) -> WsConnection {
-        WsConnection {
-            url: "ws://localhost:9094/ws".into(),
-            ws: None,
-            state: ConnectionState::Disconnected,
-            reconnect_attempts: attempts,
-            max_reconnect_attempts: max,
-            auto_reconnect: auto,
-            intentional_disconnect: false,
-            on_message: None,
-            on_state_change: None,
-            on_reconnect_failed: None,
+        let conn = WsConnection::new("ws://localhost:9094/ws");
+        {
+            let mut inner = conn.inner.borrow_mut();
+            inner.reconnect_attempts = attempts;
+            inner.max_reconnect_attempts = max;
+            inner.auto_reconnect = auto;
         }
+        conn
     }
 
     // ── ConnectionState ──────────────────────────────────────────────
@@ -212,16 +703,16 @@ mod tests {
     }
 
     #[test]
-    fn test_is_connected_when_connected() {
-        let mut conn = make_conn(0, 5, true);
-        conn.state = ConnectionState::Connected;
-        assert!(conn.is_connected());
+    fn test_is_connected_requires_open_socket() {
+        let conn = make_conn(0, 5, true);
+        conn.inner.borrow_mut().state = ConnectionState::Connected;
+        assert!(!conn.is_connected());
     }
 
     #[test]
     fn test_state_returns_current_state() {
-        let mut conn = make_conn(0, 5, true);
-        conn.state = ConnectionState::Reconnecting;
+        let conn = make_conn(0, 5, true);
+        conn.inner.borrow_mut().state = ConnectionState::Reconnecting;
         assert_eq!(conn.state(), ConnectionState::Reconnecting);
     }
 
@@ -229,7 +720,7 @@ mod tests {
     fn test_set_max_reconnect_attempts() {
         let mut conn = make_conn(0, 5, true);
         conn.set_max_reconnect_attempts(10);
-        assert_eq!(conn.max_reconnect_attempts, 10);
+        assert_eq!(conn.inner.borrow().max_reconnect_attempts, 10);
     }
 
     #[test]
@@ -259,8 +750,8 @@ mod tests {
 
     #[test]
     fn test_should_not_reconnect_after_intentional_disconnect() {
-        let mut conn = make_conn(0, 5, true);
-        conn.intentional_disconnect = true;
+        let conn = make_conn(0, 5, true);
+        conn.inner.borrow_mut().intentional_disconnect = true;
         assert!(!conn.should_reconnect());
     }
 
@@ -280,272 +771,5 @@ mod tests {
     fn test_reconnect_attempts_getter() {
         let conn = make_conn(3, 5, true);
         assert_eq!(conn.reconnect_attempts(), 3);
-    }
-}
-
-// Internal helper methods (not exported to JS).
-impl WsConnection {
-    /// Send a typed browser message (internal only — not exported to JS).
-    pub(crate) fn send_message(&self, msg: &BrowserMessage) -> Result<(), JsValue> {
-        let json = msg
-            .to_json()
-            .map_err(|e| StreamlineError::serialization(&e.to_string()))?;
-        self.send(&json)
-    }
-
-    /// Whether a reconnection attempt should be scheduled.
-    #[allow(dead_code)]
-    pub(crate) fn should_reconnect(&self) -> bool {
-        if !self.auto_reconnect || self.intentional_disconnect {
-            return false;
-        }
-        // max_reconnect_attempts == 0 means unlimited
-        self.max_reconnect_attempts == 0 || self.reconnect_attempts < self.max_reconnect_attempts
-    }
-
-    fn set_state(&mut self, state: ConnectionState) {
-        self.state = state;
-        if let Some(ref cb) = self.on_state_change {
-            let _ = cb.call1(&JsValue::NULL, &JsValue::from(format!("{state:?}")));
-        }
-    }
-
-    fn setup_event_handlers(&self, ws: &WebSocket) -> Result<(), JsValue> {
-        // Shared mutable state so closures can coordinate reconnection.
-        // Rc<RefCell<…>> is safe here because WASM runs single-threaded.
-        let shared_url = Rc::new(self.url.clone());
-        let shared_state = Rc::new(RefCell::new(ConnectionState::Connecting));
-        let shared_attempts = Rc::new(RefCell::new(self.reconnect_attempts));
-        let shared_max = self.max_reconnect_attempts;
-        let shared_auto = self.auto_reconnect;
-        let shared_on_state = self.on_state_change.clone();
-        let shared_on_msg = self.on_message.clone();
-        let shared_on_fail = self.on_reconnect_failed.clone();
-
-        // ── onopen ────────────────────────────────────────────────
-        {
-            let state = Rc::clone(&shared_state);
-            let attempts = Rc::clone(&shared_attempts);
-            let on_state = shared_on_state.clone();
-            let onopen = Closure::<dyn FnMut()>::new(move || {
-                *state.borrow_mut() = ConnectionState::Connected;
-                *attempts.borrow_mut() = 0; // reset on success
-                if let Some(ref cb) = on_state {
-                    let _ = cb.call1(&JsValue::NULL, &JsValue::from("Connected"));
-                }
-                web_sys::console::log_1(&"[streamline-wasm] WebSocket connected".into());
-            });
-            ws.set_onopen(Some(onopen.as_ref().unchecked_ref()));
-            onopen.forget();
-        }
-
-        // ── onmessage ────────────────────────────────────────────
-        {
-            let on_msg_cb = shared_on_msg.clone();
-            let onmessage = Closure::<dyn FnMut(MessageEvent)>::new(move |e: MessageEvent| {
-                if let Ok(text) = e.data().dyn_into::<js_sys::JsString>() {
-                    let s: String = text.into();
-                    if let Some(ref cb) = on_msg_cb {
-                        let _ = cb.call1(&JsValue::NULL, &JsValue::from(&s));
-                    }
-                }
-            });
-            ws.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
-            onmessage.forget();
-        }
-
-        // ── onerror ──────────────────────────────────────────────
-        {
-            let onerror = Closure::<dyn FnMut(ErrorEvent)>::new(move |e: ErrorEvent| {
-                web_sys::console::error_1(
-                    &format!("[streamline-wasm] WebSocket error: {:?}", e.message()).into(),
-                );
-            });
-            ws.set_onerror(Some(onerror.as_ref().unchecked_ref()));
-            onerror.forget();
-        }
-
-        // ── onclose (with auto-reconnect) ────────────────────────
-        {
-            let state = Rc::clone(&shared_state);
-            let attempts = Rc::clone(&shared_attempts);
-            let url = Rc::clone(&shared_url);
-            let on_state = shared_on_state.clone();
-            let on_msg_for_reconnect = shared_on_msg.clone();
-            let on_fail = shared_on_fail.clone();
-
-            let onclose = Closure::<dyn FnMut(CloseEvent)>::new(move |e: CloseEvent| {
-                web_sys::console::log_1(
-                    &format!(
-                        "[streamline-wasm] WebSocket closed: code={}, reason={}",
-                        e.code(),
-                        e.reason()
-                    )
-                    .into(),
-                );
-
-                // Normal close (1000) or intentional — don't reconnect
-                let is_normal_close = e.code() == 1000;
-
-                let current_attempts = *attempts.borrow();
-                let should_reconnect = shared_auto
-                    && !is_normal_close
-                    && (shared_max == 0 || current_attempts < shared_max);
-
-                if should_reconnect {
-                    *state.borrow_mut() = ConnectionState::Reconnecting;
-                    if let Some(ref cb) = on_state {
-                        let _ = cb.call1(&JsValue::NULL, &JsValue::from("Reconnecting"));
-                    }
-
-                    let delay_ms = {
-                        let base = 1000u32;
-                        let max_delay = 30_000u32;
-                        base.saturating_mul(2u32.saturating_pow(current_attempts))
-                            .min(max_delay)
-                    };
-
-                    *attempts.borrow_mut() = current_attempts + 1;
-
-                    web_sys::console::log_1(
-                        &format!(
-                            "[streamline-wasm] Reconnecting in {}ms (attempt {}/{})",
-                            delay_ms,
-                            current_attempts + 1,
-                            if shared_max == 0 {
-                                "∞".to_string()
-                            } else {
-                                shared_max.to_string()
-                            },
-                        )
-                        .into(),
-                    );
-
-                    // Schedule reconnection via setTimeout
-                    let url_inner = Rc::clone(&url);
-                    let state_inner = Rc::clone(&state);
-                    let attempts_inner = Rc::clone(&attempts);
-                    let on_state_inner = on_state.clone();
-                    let on_msg_inner = on_msg_for_reconnect.clone();
-                    let on_fail_inner = on_fail.clone();
-
-                    let reconnect_cb = Closure::<dyn FnMut()>::new(move || {
-                        match WebSocket::new(&url_inner) {
-                            Ok(new_ws) => {
-                                new_ws.set_binary_type(web_sys::BinaryType::Arraybuffer);
-
-                                // Re-wire onopen
-                                {
-                                    let s = Rc::clone(&state_inner);
-                                    let a = Rc::clone(&attempts_inner);
-                                    let osc = on_state_inner.clone();
-                                    let onopen = Closure::<dyn FnMut()>::new(move || {
-                                        *s.borrow_mut() = ConnectionState::Connected;
-                                        *a.borrow_mut() = 0;
-                                        if let Some(ref cb) = osc {
-                                            let _ = cb
-                                                .call1(&JsValue::NULL, &JsValue::from("Connected"));
-                                        }
-                                        web_sys::console::log_1(
-                                            &"[streamline-wasm] Reconnected successfully".into(),
-                                        );
-                                    });
-                                    new_ws.set_onopen(Some(onopen.as_ref().unchecked_ref()));
-                                    onopen.forget();
-                                }
-
-                                // Re-wire onmessage
-                                {
-                                    let cb = on_msg_inner.clone();
-                                    let onmessage = Closure::<dyn FnMut(MessageEvent)>::new(
-                                        move |e: MessageEvent| {
-                                            if let Ok(text) =
-                                                e.data().dyn_into::<js_sys::JsString>()
-                                            {
-                                                let s: String = text.into();
-                                                if let Some(ref f) = cb {
-                                                    let _ =
-                                                        f.call1(&JsValue::NULL, &JsValue::from(&s));
-                                                }
-                                            }
-                                        },
-                                    );
-                                    new_ws.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
-                                    onmessage.forget();
-                                }
-
-                                // onerror — just log
-                                {
-                                    let onerror = Closure::<dyn FnMut(ErrorEvent)>::new(
-                                        move |e: ErrorEvent| {
-                                            web_sys::console::error_1(
-                                                &format!(
-                                                    "[streamline-wasm] WebSocket error: {:?}",
-                                                    e.message()
-                                                )
-                                                .into(),
-                                            );
-                                        },
-                                    );
-                                    new_ws.set_onerror(Some(onerror.as_ref().unchecked_ref()));
-                                    onerror.forget();
-                                }
-                            }
-                            Err(err) => {
-                                web_sys::console::error_1(
-                                    &format!("[streamline-wasm] Reconnect failed: {:?}", err)
-                                        .into(),
-                                );
-                                *state_inner.borrow_mut() = ConnectionState::Disconnected;
-                                if let Some(ref cb) = on_fail_inner {
-                                    let _ = cb
-                                        .call1(&JsValue::NULL, &JsValue::from("Reconnect failed"));
-                                }
-                            }
-                        }
-                    });
-
-                    // Use the browser's setTimeout for the delay
-                    let window = web_sys::window();
-                    if let Some(win) = window {
-                        let _ = win.set_timeout_with_callback_and_timeout_and_arguments_0(
-                            reconnect_cb.as_ref().unchecked_ref(),
-                            delay_ms as i32,
-                        );
-                    }
-                    reconnect_cb.forget();
-                } else {
-                    *state.borrow_mut() = ConnectionState::Disconnected;
-                    if let Some(ref cb) = on_state {
-                        let _ = cb.call1(&JsValue::NULL, &JsValue::from("Disconnected"));
-                    }
-
-                    // Notify if reconnection exhausted
-                    if shared_auto
-                        && !is_normal_close
-                        && current_attempts >= shared_max
-                        && shared_max > 0
-                    {
-                        web_sys::console::error_1(
-                            &format!(
-                                "[streamline-wasm] Max reconnection attempts ({}) exhausted",
-                                shared_max,
-                            )
-                            .into(),
-                        );
-                        if let Some(ref cb) = on_fail {
-                            let _ = cb.call1(
-                                &JsValue::NULL,
-                                &JsValue::from("Max reconnection attempts exhausted"),
-                            );
-                        }
-                    }
-                }
-            });
-            ws.set_onclose(Some(onclose.as_ref().unchecked_ref()));
-            onclose.forget();
-        }
-
-        Ok(())
     }
 }

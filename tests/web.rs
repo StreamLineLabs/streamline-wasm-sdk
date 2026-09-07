@@ -35,14 +35,35 @@ fn producer_without_default_topic() {
 #[wasm_bindgen_test]
 fn producer_disconnect_on_fresh() {
     let mut producer = Producer::new("ws://localhost:9094/ws", None);
-    producer.disconnect();
+    assert!(producer.disconnect().is_ok());
 }
 
 #[wasm_bindgen_test]
-fn producer_send_without_connection_fails() {
+fn producer_send_without_connection_surfaces_delivery_error() {
+    // batch_size(1) means the single send() below triggers an immediate
+    // auto-flush attempt against a never-connected socket. The transport
+    // failure must be surfaced truthfully (Err), not swallowed, and the
+    // undelivered record must remain queued rather than being dropped.
     let mut producer = Producer::new("ws://localhost:9094/ws", Some("topic".into()));
+    producer.set_batch_size(1);
     let result = producer.send("hello", None);
     assert!(result.is_err());
+    assert_eq!(producer.total_sent(), 0);
+    assert_eq!(producer.total_errors(), 1);
+    assert_eq!(
+        producer.pending_count(),
+        1,
+        "undelivered record must be retained, not dropped"
+    );
+
+    let retry = producer.send("second", None);
+    assert!(retry.is_err());
+    assert_eq!(
+        producer.total_errors(),
+        2,
+        "a retry counts its one failed send attempt, not both pending records"
+    );
+    assert_eq!(producer.pending_count(), 2);
 }
 
 #[wasm_bindgen_test]
@@ -53,10 +74,18 @@ fn producer_send_without_topic_or_default_fails() {
 }
 
 #[wasm_bindgen_test]
-fn producer_send_keyed_without_connection_fails() {
+fn producer_send_keyed_without_connection_surfaces_delivery_error() {
     let mut producer = Producer::new("ws://localhost:9094/ws", Some("topic".into()));
+    producer.set_batch_size(1);
     let result = producer.send_keyed("key", "value", None);
     assert!(result.is_err());
+    assert_eq!(producer.total_sent(), 0);
+    assert_eq!(producer.total_errors(), 1);
+    assert_eq!(
+        producer.pending_count(),
+        1,
+        "undelivered record must be retained, not dropped"
+    );
 }
 
 // ── Consumer construction ────────────────────────────────────────────
@@ -123,7 +152,6 @@ fn multiple_producers_coexist() {
     let _p2 = Producer::new("ws://localhost:9094/ws", Some("topic-b".into()));
 }
 
-
 #[wasm_bindgen_test]
 async fn test_message_throughput() {
     // Verify we can create and serialize many messages quickly
@@ -132,5 +160,8 @@ async fn test_message_throughput() {
         let _msg = format!("benchmark-message-{}", i);
     }
     let elapsed = js_sys::Date::now() - start;
-    assert!(elapsed < 100.0, "1000 messages should complete in under 100ms");
+    assert!(
+        elapsed < 100.0,
+        "1000 messages should complete in under 100ms"
+    );
 }

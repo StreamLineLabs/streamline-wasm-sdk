@@ -4,8 +4,8 @@
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.2.x   | :white_check_mark: |
-| < 0.2   | :x:                |
+| 0.4.x   | :white_check_mark: |
+| < 0.4   | :x:                |
 
 ## Reporting a Vulnerability
 
@@ -27,6 +27,10 @@ Please report security vulnerabilities to **security@streamlinelabs.dev**.
 - **Fix Timeline**: Communicated after assessment
 
 We follow responsible disclosure practices and will credit reporters (with permission) in our release notes.
+
+Rust dependencies are checked with RustSec and `cargo-deny` in CI and before
+release. Code scanning uses GitHub CodeQL's Rust extractor rather than treating
+the Rust source tree as C/C++.
 
 ## Security Best Practices
 

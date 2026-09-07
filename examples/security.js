@@ -1,51 +1,24 @@
 // security.js — Authentication with Streamline WASM SDK
 //
-// Demonstrates configuring authentication tokens for the WASM SDK.
-// The browser WASM SDK uses WebSocket connections with token-based auth
-// (TLS is handled at the transport layer by the browser).
+// Demonstrates supported HTTP bearer authentication and secure transport.
+// The current WebSocket client cannot set browser handshake headers.
 //
 // Usage:
 //   1. Start Streamline with auth: streamline --auth-enabled --auth-users-file users.yaml
 //   2. Include in a bundler or HTML page with the WASM SDK loaded.
 
-async function tokenAuthExample() {
-  console.log('Token Authentication');
+async function webSocketAuthLimitationExample() {
+  console.log('WebSocket Authentication');
   console.log('-'.repeat(40));
 
-  const wasm = await import('@streamlinelabs/streamline-wasm');
-  await wasm.default();
-
-  // The WASM SDK uses the WebSocket URL, and authentication is passed
-  // via the connection URL or headers depending on server configuration.
-  const authToken = typeof process !== 'undefined'
-    ? (process.env.STREAMLINE_AUTH_TOKEN || 'demo-token')
-    : 'demo-token';
-
-  // Connect with auth token in the URL
-  const serverUrl = `ws://localhost:9094/ws?token=${encodeURIComponent(authToken)}`;
-  const client = new wasm.StreamlineClient(serverUrl);
-
-  try {
-    await client.connect();
-    console.log('  ✅ Connected with token authentication');
-
-    // Produce a message to verify auth works
-    await client.produce('secure-events', JSON.stringify({
-      action: 'login',
-      user: 'alice',
-      authenticated: true,
-    }));
-    console.log('  ✅ Produced authenticated message');
-
-  } catch (err) {
-    console.error(`  ❌ Auth failed: ${err}`);
-  } finally {
-    client.disconnect();
-    console.log('  Disconnected.\n');
-  }
+  console.log('  The current browser WebSocket API does not expose custom');
+  console.log('  Authorization headers, and this SDK does not place bearer');
+  console.log('  tokens in URLs because URLs can leak through logs/history.');
+  console.log('  Use a same-origin authenticated gateway or another server-');
+  console.log('  supported browser credential mechanism before connecting.\n');
 }
 
-async function schemaRegistryAuthExample() {
+async function schemaRegistryAuthExample(authToken) {
   console.log('Schema Registry with Auth Token');
   console.log('-'.repeat(40));
 
@@ -54,10 +27,12 @@ async function schemaRegistryAuthExample() {
 
   const registry = new wasm.SchemaRegistryClient('http://localhost:9094');
 
-  // Set auth token for registry API calls
-  const authToken = typeof process !== 'undefined'
-    ? (process.env.STREAMLINE_AUTH_TOKEN || 'demo-token')
-    : 'demo-token';
+  if (!authToken) {
+    console.log('  Skipped: pass a token from secure application state.\n');
+    return;
+  }
+
+  // HTTP clients support an Authorization: Bearer header.
   registry.set_auth_token(authToken);
 
   console.log('  ✅ Schema registry client configured with auth token');
@@ -79,7 +54,8 @@ async function secureWebSocketExample() {
 
   // In a real app:
   // const client = new wasm.StreamlineClient(secureUrl);
-  // await client.connect();
+  // client.on_state_change((state) => console.log(state));
+  // client.connect(); // wait for Connected before sending
 }
 
 async function main() {
@@ -87,8 +63,12 @@ async function main() {
   console.log('='.repeat(40));
   console.log();
 
-  await tokenAuthExample();
-  await schemaRegistryAuthExample();
+  const authToken = typeof process !== 'undefined'
+    ? process.env.STREAMLINE_AUTH_TOKEN
+    : undefined;
+
+  await webSocketAuthLimitationExample();
+  await schemaRegistryAuthExample(authToken);
   await secureWebSocketExample();
 
   console.log('Done!');
